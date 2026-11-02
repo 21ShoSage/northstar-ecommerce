@@ -16,8 +16,9 @@ try {
   if (existing.rowCount === 0) {
     const hash = await bcrypt.hash('Admin123!', 12);
     await pool.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)',
-      ['Store Administrator', adminEmail, hash, 'admin']
+      `INSERT INTO users (name, first_name, last_name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      ['Store Administrator', 'Store', 'Administrator', adminEmail, hash, 'admin']
     );
   }
 

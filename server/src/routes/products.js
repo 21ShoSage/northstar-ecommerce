@@ -128,6 +128,8 @@ router.get('/', async (req, res, next) => {
       `SELECT p.id, p.name, p.description, p.category, p.price::float AS price,
               p.image_url,
               COALESCE(SUM(v.stock), p.stock)::int AS stock,
+              p.low_stock_threshold,
+              COALESCE(SUM(v.stock), p.stock)::int <= p.low_stock_threshold AS low_stock,
               p.created_at, ${variantSelect}
        FROM products p LEFT JOIN product_variants v ON v.product_id = p.id
        WHERE (p.name ILIKE $1 OR p.description ILIKE $1)
@@ -143,12 +145,31 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+router.get('/inventory/adjustments', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ia.id, ia.variant_id, p.name AS product_name, v.name AS variant_name,
+              ia.quantity_delta, ia.reason, ia.order_id, ia.created_at
+       FROM inventory_adjustments ia
+       JOIN product_variants v ON v.id = ia.variant_id
+       JOIN products p ON p.id = v.product_id
+       ORDER BY ia.created_at DESC
+       LIMIT 200`
+    );
+    res.json({ adjustments: rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT p.id, p.name, p.description, p.category, p.price::float AS price,
               p.image_url,
               COALESCE(SUM(v.stock), p.stock)::int AS stock,
+              p.low_stock_threshold,
+              COALESCE(SUM(v.stock), p.stock)::int <= p.low_stock_threshold AS low_stock,
               ${variantSelect}
        FROM products p LEFT JOIN product_variants v ON v.product_id = p.id
        WHERE p.id = $1

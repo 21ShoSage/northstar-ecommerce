@@ -174,3 +174,6 @@
    height: 100%;
    object-fit: cover;
  }
+.password-field{position:relative;display:flex;align-items:center}.password-field input{width:100%;padding-right:44px}.password-toggle{position:absolute;right:8px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;padding:7px}.field-error{display:block;color:#a33d32;font-size:10px;margin-top:6px}.auth-forgot{margin-top:-6px}.auth-form-centered{margin:70px auto}.auth-form label.password-label{display:block}
+.saved-address{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding:16px 0}.saved-address p{font-size:11px;margin:6px 0}.saved-address .admin-row-actions{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}.saved-address .admin-row-actions button{border:1px solid var(--line);background:transparent;padding:7px 9px;font-size:10px}.checkbox-label{display:flex;align-items:center;gap:8px}.checkbox-label input{width:auto}
+.notice{display:flex;align-items:center;gap:9px;padding:12px 14px;border:1px solid #e1a09a;background:#fbe9e7;color:#9e2f27;font-size:12px;line-height:1.45;margin:14px 0}.notice svg{flex:0 0 auto}.notice-success{border-color:#b7d0b4;background:#edf6eb;color:#2f6b3b}

@@ -7,6 +7,7 @@ A course-project starter built to match the uploaded IT401W Web Programming and 
 - JWT authentication and role-based access control (customer/admin)
 - Form handling and validation
 - Product catalog, search, cart, checkout, orders, and admin product/order management
+- Cart-add confirmation, demo checkout payment-method selection, and timed status notifications
 
 > This is a learning/demo project. Checkout records an order in the database; it does not process real payments.
 
@@ -55,6 +56,11 @@ npm run dev
 ```
 `db:setup` creates tables and inserts demo products plus a demo admin account.
 
+Password reset emails require SMTP settings in `server/.env`:
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`.
+Copy the values from `server/.env.example`; the endpoint keeps responses generic so it
+does not reveal whether an email address has an account.
+
 Terminal 2:
 ```bash
 cd client
@@ -75,8 +81,17 @@ Change or remove this demo account before deploying publicly. You can register a
 - View product details with a main product image, selectable color/size variants, variant-image gallery, and variant-level stock
 - Add/remove items and change quantities in a persistent browser cart
 - Register and sign in
+- Separate first-name and last-name account fields
+- Password strength validation, confirmation, visibility toggles, and password reset by email
+- Required phone number and birthday on customer registration
 - Checkout with shipping details
+- Saved customer shipping address, editable from the profile and checkout
+- Checkout address book with saved-address selection and optional save-new-address prompt
+- Profile address management with add, edit, delete, and default-address controls
+- PHP 100 shipping fee, waived when the subtotal exceeds PHP 5,000
 - View order history
+- Order status history and configurable order-status email notifications
+- Low-stock indicators and inventory adjustment history
 
 ### Admin
 - Manage products (create, edit, delete, and add a main image plus repeatable variants with color, name/size, SKU, price, stock, and optional image)
@@ -90,6 +105,8 @@ Base URL: `http://localhost:5000/api`
 | GET | `/health` | Public | Health check |
 | POST | `/auth/register` | Public | Create customer account |
 | POST | `/auth/login` | Public | Login and receive JWT |
+| POST | `/auth/forgot-password` | Public | Send a password reset email |
+| POST | `/auth/reset-password` | Public | Reset a password with a single-use token |
 | GET | `/auth/me` | Authenticated | Current user |
 | GET | `/products` | Public | List/search products |
 | GET | `/products/:id` | Public | Product details |
@@ -100,6 +117,7 @@ Base URL: `http://localhost:5000/api`
 | GET | `/orders/my` | Authenticated | Customer order history |
 | GET | `/orders` | Admin | List all orders |
 | PATCH | `/orders/:id/status` | Admin | Update order status |
+| GET | `/products/inventory/adjustments` | Admin | View recent inventory adjustments |
 
 ## Deployment notes
 The assignment asks for a deployed full-stack application. This ZIP is ready to run locally; deployment still requires creating hosted services and setting environment variables:

@@ -1,14 +1,23 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { ShoppingBag, Search, ArrowUpRight, Plus, Minus, Trash2, Menu, X, PackageCheck, ShieldCheck, Leaf, Truck, LogOut, UserRound, LayoutDashboard, ClipboardList, Pencil, CircleCheck, AlertCircle, Camera, LockKeyhole, Save } from 'lucide-react';
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ShoppingBag, Search, ArrowUpRight, Plus, Minus, Trash2, Menu, X, PackageCheck, ShieldCheck, Leaf, Truck, LogOut, UserRound, LayoutDashboard, ClipboardList, Pencil, CircleCheck, AlertCircle, Camera, LockKeyhole, Save, Eye, EyeOff } from 'lucide-react';
 import { api, money } from './api.js';
 import { useStore } from './store.jsx';
 
-function Notice({ message }) {
-  if (!message) return null;
+function Notice({ message, type = 'error' }) {
+  const [visible, setVisible] = useState(Boolean(message));
+  useEffect(() => {
+    setVisible(Boolean(message));
+    if (!message) return undefined;
+    const timer = window.setTimeout(() => setVisible(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  if (!message || !visible) return null;
 
   return (
-    <div className="notice" role="alert">
+    <div className={`notice notice-${type}`} role="alert">
+      {type === 'success' ? <CircleCheck size={18} /> : <AlertCircle size={18} />}
       {message}
     </div>
   );
@@ -31,8 +40,17 @@ const imageSrc = (value) => {
 
   return `http://localhost:5000${value.startsWith('/') ? '' : '/'}${value}`;
 };
+
+const emailErrorMessage = (email) =>
+  !email ? 'Email address is required.' :
+  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ? 'Enter a valid email address.'
+    : '';
+
+const today = new Date().toISOString().slice(0, 10);
 function Header() {
   const { user, logout, cart } = useStore();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   return <header className="site-header">
     <div className="nav-wrap">
@@ -42,8 +60,8 @@ function Header() {
         <NavLink to="/shop" onClick={() => setOpen(false)}>Shop all</NavLink>
         {user?.role === 'admin' && <NavLink to="/admin" onClick={() => setOpen(false)}>Admin</NavLink>}
         {user && <NavLink to="/profile" onClick={() => setOpen(false)}>My Profile</NavLink>}
-        {user && <NavLink to="/orders" onClick={() => setOpen(false)}>My orders</NavLink>}
-        <Link to="/cart" className="cart-link" onClick={() => setOpen(false)}><ShoppingBag size={17}/> Bag <span className="cart-count">{cart.reduce((s, x) => s + x.quantity, 0)}</span></Link>
+        {user && user.role !== 'admin' && <NavLink to="/orders" onClick={() => setOpen(false)}>My orders</NavLink>}
+        {user && user.role !== 'admin' && <Link to="/cart" className="cart-link" onClick={() => setOpen(false)}><ShoppingBag size={17}/> Bag <span className="cart-count">{cart.reduce((s, x) => s + x.quantity, 0)}</span></Link>}
         
 {user ? (
   <button
@@ -56,6 +74,7 @@ function Header() {
       if (confirmed) {
         logout();
         setOpen(false);
+        navigate('/login');
       }
     }}
   >
@@ -79,8 +98,10 @@ function Footer() {
   return <footer className="footer"><div className="footer-inner"><Link to="/" className="brand footer-brand"><span className="brand-mark">N</span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link><p>Thoughtful finds. Everyday favorites.</p><span>Â© {new Date().getFullYear()} Northstar Store</span></div></footer>;
 }
 function ProductCard({ product, index = 0 }) {
-  const { addToCart } = useStore();
+  const { user, addToCart } = useStore();
+  const navigate = useNavigate();
   const [added, setAdded] = useState(false);
+  const [cartNotice, setCartNotice] = useState('');
   const variant = product.variants?.[0];
   const displayPrice = variant?.price ?? product.price;
   const displayStock = product.variants?.length
@@ -99,7 +120,7 @@ function ProductCard({ product, index = 0 }) {
 />
       <span className="product-category">{product.category}</span>
     </Link>
-    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span><button className={`add-button ${added ? 'added' : ''}`} aria-label={`Add ${product.name} to bag`} disabled={displayStock < 1} onClick={() => { addToCart({ ...product, selectedVariant: variant }); setAdded(true); setTimeout(() => setAdded(false), 1000); }}>{added ? <CircleCheck size={17}/> : <Plus size={17}/>}</button></div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span></div>
+    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span><button className={`add-button ${added ? 'added' : ''}`} aria-label={`Add ${product.name} to bag`} disabled={displayStock < 1} onClick={() => { if (!user) { window.alert('Please log in first to add a product to your bag.'); navigate('/login'); return; } addToCart({ ...product, selectedVariant: variant }); setAdded(true); setCartNotice('Product added to cart.'); setTimeout(() => setAdded(false), 1000); }}>{added ? <CircleCheck size={17}/> : <Plus size={17}/>}</button></div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span>{cartNotice && <Notice message={cartNotice} type="success" />}</div>
   </article>;
 }
 function Home() {
@@ -121,10 +142,12 @@ function Shop() {
 
 function ProductDetail() {
   const { id } = useParamsSafe();
+  const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [error, setError] = useState('');
   const [selectedVariantId, setSelectedVariantId] = useState(null);
-  const { addToCart } = useStore();
+  const [cartNotice, setCartNotice] = useState('');
+  const { user, addToCart } = useStore();
 
   useEffect(() => {
     api(`/products/${id}`)
@@ -149,6 +172,9 @@ function ProductDetail() {
   const selectedVariant = product.variants?.find((variant) => variant.id === selectedVariantId)
     || product.variants?.[0]
     || { id: null, name: 'Standard', price: product.price, stock: product.stock };
+  const displayedImage = selectedVariantId === null
+    ? product.image_url
+    : selectedVariant.image_url || product.image_url;
 
   return (
     <main className="page-shell">
@@ -159,7 +185,7 @@ function ProductDetail() {
       <div className="detail-layout">
         <div className="detail-image">
           <img
-            src={imageSrc(selectedVariant.image_url || product.image_url)}
+            src={imageSrc(displayedImage)}
             alt={product.name}
             onError={(e) => {
               e.currentTarget.onerror = null;
@@ -175,7 +201,7 @@ function ProductDetail() {
                   className="detail-gallery-thumb"
                   key={image.id}
                   onClick={() => {
-                    if (image.id !== 'main') setSelectedVariantId(image.id);
+                    setSelectedVariantId(image.id === 'main' ? null : image.id);
                   }}
                   aria-label={image.id === 'main' ? 'View main product image' : `View ${image.color || image.name} image`}
                 >
@@ -205,10 +231,19 @@ function ProductDetail() {
           <button
             className="button button-dark wide-button"
             disabled={selectedVariant.stock < 1}
-            onClick={() => addToCart({ ...product, selectedVariant })}
+            onClick={() => {
+              if (!user) {
+                window.alert('Please log in first to add a product to your bag.');
+                navigate('/login');
+                return;
+              }
+              addToCart({ ...product, selectedVariant });
+              setCartNotice('Product added to cart.');
+            }}
           >
             Add to bag <ShoppingBag size={17} />
           </button>
+          <Notice message={cartNotice} type="success" />
 
           <div className="detail-assurances">
             <span><PackageCheck size={17} /> Carefully selected</span>
@@ -227,6 +262,17 @@ function useParamsSafe() {
 function Cart() {
   const { cart, setQuantity, removeFromCart } = useStore();
   const total = cart.reduce((s, x) => s + x.price * x.quantity, 0);
+  const shipping = total > 5000 ? 0 : 100;
+  const decreaseQuantity = (item) => {
+    if (item.quantity === 1) {
+      if (window.confirm('Want to remove the item?')) {
+        removeFromCart(item.id);
+      }
+      return;
+    }
+
+    setQuantity(item.id, item.quantity - 1);
+  };
   return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR SELECTION</span><h1>Your <em>bag.</em></h1></div>{!cart.length ? <div className="empty-state"><ShoppingBag size={30}/><h3>Your bag is taking a little break.</h3><p>Find something useful for your everyday.</p><Link to="/shop" className="button button-dark">Explore the shop <ArrowUpRight size={17}/></Link></div> : <div className="cart-layout"><div className="cart-items">{cart.map(item => <div className="cart-item" key={`${item.id}-${item.variant_id || 'standard'}`}><img
   src={imageSrc(item.image_url)}
   alt={item.name}
@@ -234,42 +280,104 @@ function Cart() {
     e.currentTarget.onerror = null;
     e.currentTarget.src = fallbackImage;
   }}
-/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{item.variant_name && <small>{item.variant_name}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => item.quantity === 1 ? removeFromCart(item.id) : setQuantity(item.id, item.quantity - 1)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => removeFromCart(item.id)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>Calculated at checkout</span></div><div className="summary-total"><span>Estimated total</span><strong>{money(total)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
+/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{item.variant_name && <small>{item.variant_name}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => decreaseQuantity(item)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => removeFromCart(item.id)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div>{shipping > 0 && <p className="summary-note">Free shipping on orders over PHP 5,000.</p>}<div className="summary-total"><span>Estimated total</span><strong>{money(total + shipping)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
 }
 function Checkout() {
   const { cart, clearCart, user } = useStore(), navigate = useNavigate();
-  const [form, setForm] = useState({ customer_name: user?.name || '', shipping_address: '', phone: '' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddress, setSelectedAddress] = useState('');
+  const [form, setForm] = useState({ customer_name: user?.name || '', shipping_address: '', phone: user?.phone || '', payment_method: 'Cash on delivery' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api('/auth/addresses').then((data) => {
+      setAddresses(data.addresses);
+      const saved = data.addresses.find((address) => address.is_default) || data.addresses[0];
+      if (saved) {
+        setSelectedAddress(String(saved.id));
+        setForm((current) => ({ ...current, customer_name: saved.recipient_name, phone: saved.phone, shipping_address: saved.address_line }));
+      } else {
+        setSelectedAddress('new');
+      }
+    }).catch((e) => setError(e.message));
+  }, []);
   const total = cart.reduce((s, x) => s + x.price * x.quantity, 0);
-  const change = e => setForm({ ...form, [e.target.name]: e.target.value });
+  const shipping = total > 5000 ? 0 : 100;
+  const change = e => setForm({
+    ...form,
+    [e.target.name]: e.target.name === 'phone'
+      ? e.target.value.replace(/\D/g, '').slice(0, 11)
+      : e.target.value
+  });
   async function submit(e) {
     e.preventDefault(); setError('');
     if (!cart.length) return setError('Your bag is empty.');
     setBusy(true);
-    try { const d = await api('/orders', { method: 'POST', body: JSON.stringify({ ...form, items: cart.map(x => ({ product_id: x.id, variant_id: x.variant_id, quantity: x.quantity })) }) }); clearCart(); navigate('/orders', { state: { message: d.message } }); }
+    try {
+      const shouldSave = selectedAddress === 'new' && window.confirm('Would you like to save this address to your address book?');
+      const d = await api('/orders', { method: 'POST', body: JSON.stringify({ ...form, items: cart.map(x => ({ product_id: x.id, variant_id: x.variant_id, quantity: x.quantity })) }) });
+      if (shouldSave) {
+        await api('/auth/addresses', { method: 'POST', body: JSON.stringify({ label: 'Checkout address', recipient_name: form.customer_name, phone: form.phone, address_line: form.shipping_address }) });
+      }
+      clearCart(); navigate('/orders', { state: { message: d.message } });
+    }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   if (!user) return <main className="page-shell"><div className="empty-state"><UserRound size={30}/><h3>Sign in to check out</h3><p>Your orders will be saved to your account.</p><Link to="/login" className="button button-dark">Sign in or create account</Link></div></main>;
   if (!cart.length) return <main className="page-shell"><div className="empty-state"><h3>Your bag is empty.</h3><Link to="/shop" className="text-link">Return to shop â†’</Link></div></main>;
-  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">ALMOST YOURS</span><h1>Checkout <em>details.</em></h1></div><div className="checkout-layout"><form className="form-card" onSubmit={submit}><h2>Shipping information</h2><p className="muted">Where should we send your order?</p><Notice message={error}/><label>Full name<input name="customer_name" required minLength="2" value={form.customer_name} onChange={change} placeholder="Your full name"/></label><label>Phone number<input name="phone" required minLength="7" value={form.phone} onChange={change} placeholder="09XX XXX XXXX"/></label><label>Complete shipping address<textarea name="shipping_address" required minLength="8" rows="4" value={form.shipping_address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Placing orderâ€¦' : 'Place demo order'} <ArrowUpRight size={17}/></button><p className="summary-note">Demo checkout only; no real payment is collected.</p></form><aside className="order-summary"><span className="eyebrow">IN YOUR BAG</span><h2>Order summary</h2>{cart.map(i => <div className="summary-product" key={`${i.id}-${i.variant_id || 'standard'}`}><img
+  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">ALMOST YOURS</span><h1>Checkout <em>details.</em></h1></div><div className="checkout-layout"><form className="form-card" onSubmit={submit}><h2>Shipping information</h2><p className="muted">Your saved address is prefilled. You can change it for this order.</p>  <Notice message={error}/><label>Shipping address<select value={selectedAddress} onChange={(e) => { const value = e.target.value; setSelectedAddress(value); const saved = addresses.find((address) => String(address.id) === value); if (saved) setForm({ ...form, customer_name: saved.recipient_name, phone: saved.phone, shipping_address: saved.address_line }); else setForm({ ...form, customer_name: user.name, phone: user.phone || '', shipping_address: '', payment_method: form.payment_method }); }}><option value="new">Add a new address</option>{addresses.map((address) => <option key={address.id} value={address.id}>{address.label} — {address.address_line}</option>)}</select></label><label>Recipient name<input name="customer_name" required minLength="2" value={form.customer_name} onChange={change} placeholder="Recipient name"/></label><label>Phone number<input name="phone" type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" required value={form.phone} onChange={change} placeholder="11-digit phone number"/></label><label>Complete shipping address<textarea name="shipping_address" required minLength="8" rows="4" value={form.shipping_address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label><label>Payment method<select name="payment_method" value={form.payment_method} onChange={change}><option>Cash on delivery</option><option>GCash (Demo)</option><option>Credit or debit card (Demo)</option></select></label><p className="summary-note">Demo payment selection only. No real payment is processed.</p><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Placing orderâ€¦' : 'Place order'} <ArrowUpRight size={17}/></button></form><aside className="order-summary"><span className="eyebrow">IN YOUR BAG</span><h2>Order summary</h2>{cart.map(i => <div className="summary-product" key={`${i.id}-${i.variant_id || 'standard'}`}><img
   src={imageSrc(i.image_url)}
   alt={i.name}
   onError={(e) => {
     e.currentTarget.onerror = null;
     e.currentTarget.src = fallbackImage;
   }}
-/><div><b>{i.name}</b><small>{i.variant_name} Â· Qty {i.quantity}</small></div><span>{money(i.price * i.quantity)}</span></div>)}<div className="summary-total"><span>Total</span><strong>{money(total)}</strong></div></aside></div></main>;
+/> <div><b>{i.name}</b><small>{i.variant_name} Â· Qty {i.quantity}</small></div><span>{money(i.price * i.quantity)}</span></div>)}<div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div><div className="summary-total"><span>Total</span><strong>{money(total + shipping)}</strong></div></aside></div></main>;
 }
+function PasswordInput({ name, value, onChange, placeholder, error }) {
+  const [visible, setVisible] = useState(false);
+  return <label className="password-label">Password<div className="password-field"><input name={name} type={visible ? 'text' : 'password'} required value={value} onChange={onChange} placeholder={placeholder}/><button type="button" className="password-toggle" onClick={() => setVisible(!visible)} aria-label={visible ? 'Hide password' : 'Show password'}>{visible ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>{error && <small className="field-error">{error}</small>}</label>;
+}
+
 function AuthPage({ mode }) {
   const isLogin = mode === 'login', { login } = useStore(), navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', email: '', password: '' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const change = e => setForm({ ...form, [e.target.name]: e.target.value });
-  async function submit(e) { e.preventDefault(); setError(''); setBusy(true); try { const data = await api(`/auth/${isLogin ? 'login' : 'register'}`, { method: 'POST', body: JSON.stringify(form) }); login(data); navigate(data.user.role === 'admin' ? '/admin' : '/shop'); } catch (e) { setError(e.message); } finally { setBusy(false); } }
-  return <main className="auth-shell"><div className="auth-art"><span className="eyebrow">WELCOME TO NORTHSTAR</span><h2>Find the good<br/>in the <em>everyday.</em></h2><p>A considered collection of things that make life feel a little more yours.</p><div className="auth-art-image"><img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80" alt="Store shelves"/></div></div><form className="auth-form" onSubmit={submit}><span className="eyebrow">{isLogin ? 'GOOD TO HAVE YOU BACK' : 'MAKE YOURSELF AT HOME'}</span><h1>{isLogin ? 'Welcome back.' : 'Create account.'}</h1><p className="muted">{isLogin ? 'Sign in to manage your bag and orders.' : 'Join us to save your orders and check out.'}</p><Notice message={error}/>{!isLogin && <label>Full name<input name="name" required minLength="2" value={form.name} onChange={change} placeholder="Your name"/></label>}<label>Email address<input name="email" type="email" required value={form.email} onChange={change} placeholder="you@example.com"/></label><label>Password<input name="password" type="password" minLength={isLogin ? undefined : 8} required value={form.password} onChange={change} placeholder={isLogin ? 'Your password' : 'At least 8 characters'}/></label><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Please waitâ€¦' : isLogin ? 'Sign in' : 'Create account'} <ArrowUpRight size={17}/></button><p className="auth-switch">{isLogin ? 'New to Northstar?' : 'Already have an account?'} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? 'Create an account' : 'Sign in'}</Link></p>{isLogin && <p className="demo-hint">Demo admin: admin@northstar.local Â· Admin123!</p>}</form></main>;
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '', confirmPassword: '', address: '', phone: '', birthday: '' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const change = e => setForm({
+    ...form,
+    [e.target.name]: e.target.name === 'phone'
+      ? e.target.value.replace(/\D/g, '').slice(0, 11)
+      : e.target.value
+  });
+  const passwordError = !isLogin && form.password && !/^(?=.{8,}$)(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/.test(form.password) ? 'Use 8+ characters with an uppercase letter, number, and symbol.' : '';
+  const confirmError = !isLogin && form.confirmPassword && form.password !== form.confirmPassword ? 'Passwords do not match.' : '';
+  async function submit(e) { e.preventDefault(); setError(''); const invalidEmail = emailErrorMessage(form.email); setEmailError(invalidEmail); if (invalidEmail || (!isLogin && (passwordError || confirmError))) return; setBusy(true); try { const data = await api(`/auth/${isLogin ? 'login' : 'register'}`, { method: 'POST', body: JSON.stringify(form) }); login(data); navigate(data.user.role === 'admin' ? '/admin' : '/shop'); } catch (e) { setError(isLogin ? 'Login failed. Email or password is incorrect.' : e.message); } finally { setBusy(false); } }
+  return <main className="auth-shell"><div className="auth-art"><span className="eyebrow">WELCOME TO NORTHSTAR</span><h2>Find the good<br/>in the <em>everyday.</em></h2><p>A considered collection of things that make life feel a little more yours.</p><div className="auth-art-image"><img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80" alt="Store shelves"/></div></div><form className="auth-form" onSubmit={submit}><span className="eyebrow">{isLogin ? 'GOOD TO HAVE YOU BACK' : 'MAKE YOURSELF AT HOME'}</span><h1>{isLogin ? 'Welcome back.' : 'Create account.'}</h1><p className="muted">{isLogin ? 'Sign in to manage your bag and orders.' : 'Join us to save your orders and check out.'}</p><Notice message={error}/>{!isLogin && <><label>First name<input name="first_name" required minLength="2" value={form.first_name} onChange={change} placeholder="First name"/></label><label>Last name<input name="last_name" required minLength="2" value={form.last_name} onChange={change} placeholder="Last name"/></label></>}{!isLogin && <label>Phone number<input name="phone" type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" required value={form.phone} onChange={change} placeholder="11-digit phone number"/></label>}{!isLogin && <label>Birthday  <input name="birthday" type="date" max={today} required value={form.birthday} onChange={change}/></label>}{!isLogin && <label>Default shipping address<textarea name="address" required minLength="8" rows="3" value={form.address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label>}    <label>Email address<input name="email" type="email" required pattern="[^@\s]+@[^@\s]+" title="Enter an email address containing @" value={form.email} onChange={change} onBlur={() => setEmailError(emailErrorMessage(form.email))} placeholder="you@example.com"/>{emailError && <small className="field-error">{emailError}</small>}{!emailError && error.toLowerCase().includes('email') && <small className="field-error">{error}</small>}</label><PasswordInput name="password" value={form.password} onChange={change} placeholder={isLogin ? 'Your password' : '8+ chars, uppercase, number, symbol'} error={passwordError}/>{!isLogin && <label className="password-label">Confirm password<div className="password-field"><input name="confirmPassword" type={showConfirm ? 'text' : 'password'} required value={form.confirmPassword} onChange={change} placeholder="Re-enter your password"/><button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)} aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'}>{showConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>{confirmError && <small className="field-error">{confirmError}</small>}</label>}{isLogin && <Link className="text-link auth-forgot" to="/forgot-password">Forgot password?</Link>}<button className="button button-dark wide-button" disabled={busy}>{busy ? 'Please waitâ€¦' : isLogin ? 'Sign in' : 'Create account'} <ArrowUpRight size={17}/></button><p className="auth-switch">{isLogin ? 'New to Northstar?' : 'Already have an account?'} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? 'Create an account' : 'Sign in'}</Link></p>{isLogin && <p className="demo-hint">Demo admin: admin@northstar.local Â· Admin123!</p>}</form></main>;
+}
+
+function ForgotPassword() {
+  const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  async function submit(e) { e.preventDefault(); const invalidEmail = emailErrorMessage(email); setEmailError(invalidEmail); if (invalidEmail) return; setBusy(true); setError(''); setMessage(''); try { const data = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }); setMessage(data.message); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  return <main className="auth-shell"><form className="auth-form auth-form-centered" onSubmit={submit}><span className="eyebrow">ACCOUNT RECOVERY</span><h1>Forgot password.</h1><p className="muted">Enter your email and we will send a secure reset link.</p><Notice message={error}/><Notice message={message} type="success"/><label>Email address<input type="email" required pattern="[^@\s]+@[^@\s]+" title="Enter an email address containing @" value={email} onChange={e => setEmail(e.target.value)} onBlur={() => setEmailError(emailErrorMessage(email))} placeholder="you@example.com"/>{emailError && <small className="field-error">{emailError}</small>}</label><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Sendingâ€¦' : 'Send reset link'} <ArrowUpRight size={17}/></button><Link className="text-link" to="/login">Back to sign in</Link></form></main>;
+}
+
+function ResetPassword() {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const navigate = useNavigate();
+  const [password, setPassword] = useState(''), [confirmPassword, setConfirmPassword] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false), [showConfirm, setShowConfirm] = useState(false);
+  const passwordError = password && !/^(?=.{8,}$)(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/.test(password) ? 'Use 8+ characters with an uppercase letter, number, and symbol.' : '';
+  async function submit(e) { e.preventDefault(); if (passwordError || password !== confirmPassword) return setError(passwordError || 'Passwords do not match.'); setBusy(true); try { const data = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password, confirmPassword }) }); setMessage(data.message); setTimeout(() => navigate('/login'), 1200); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  return <main className="auth-shell"><form className="auth-form auth-form-centered" onSubmit={submit}><span className="eyebrow">ACCOUNT RECOVERY</span><h1>Reset password.</h1><Notice message={error}/><Notice message={message} type="success"/><label className="password-label">New password<div className="password-field"><input type={showPassword ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)} placeholder="8+ chars, uppercase, number, symbol"/><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>{passwordError && <small className="field-error">{passwordError}</small>}</label><label className="password-label">Confirm password<div className="password-field"><input type={showConfirm ? 'text' : 'password'} required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter your password"/><button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)}>{showConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></label><button className="button button-dark wide-button" disabled={busy || !token}>{busy ? 'Savingâ€¦' : 'Reset password'} <ArrowUpRight size={17}/></button></form></main>;
 }
 function Orders() {
   const [orders, setOrders] = useState([]), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const { user } = useStore();
+  const location = useLocation();
   useEffect(() => { api('/orders/my').then(d => setOrders(d.orders)).catch(e => setError(e.message)); }, []);
+  useEffect(() => {
+    if (location.state?.message) setNotice(location.state.message);
+  }, [location.state]);
   if (!user) return <main className="page-shell"><div className="empty-state"><h3>Sign in to view your orders.</h3><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
   return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR NORTHSTAR ACCOUNT</span><h1>Order <em>history.</em></h1><p>Every order, all in one place.</p></div><Notice message={notice} type="success"/><Notice message={error}/>{!orders.length && !error ? <div className="empty-state"><ClipboardList size={30}/><h3>No orders yet.</h3><p>Your next everyday favorite is waiting.</p><Link to="/shop" className="button button-dark">Explore the shop</Link></div> : <div className="orders-list">{orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5,'0')}</span><h3>{new Date(o.created_at).toLocaleDateString()}</h3></div><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span></div><div className="order-products">{o.items.map((it,i) => <div key={i}><span>{it.product_name} Ã— {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="order-card-total"><span>Total</span><strong>{money(o.total)}</strong></div><p className="muted order-address">Delivering to: {o.shipping_address}</p></article>)}</div>}</main>;
 }
@@ -290,29 +398,105 @@ function Admin() {
   const updateVariant = (index, key, value) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, [key]: value } : v) });
   if (user?.role !== 'admin') return <main className="page-shell"><div className="empty-state"><ShieldCheck size={32}/><h3>Administrator access only.</h3><p>Sign in with an administrator account to manage the store.</p><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
   const productForm = <form className="form-card admin-form" onSubmit={save}><h2>{editing ? 'Edit product' : 'Add a product'}</h2><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Variant fields and images are required.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: '', name: '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<input required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)} placeholder="e.g. Black"/></label><label>Name / size<input required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} placeholder="e.g. Medium"/></label><label>SKU<input required value={v.sku} onChange={e => updateVariant(i, 'sku', e.target.value)} placeholder="e.g. ITEM-BLK-M"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
-  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div></div><div className="admin-tabs"><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div><Notice message={error}/><Notice message={notice} type="success"/>{tab === 'products' && <div className="admin-product-list"><h2>Product catalog <span>{products.length} items</span></h2>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button onClick={() => remove(p.id)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-layout admin-form-layout">{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>All orders <span>{orders.length} orders</span></h2>{!orders.length ? <div className="empty-state"><p>No orders have been placed yet.</p></div> : orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}</select></label></div></article>)}</div>}</main>;
+  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div></div><div className="admin-tabs"><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div><Notice message={error}/><Notice message={notice} type="success"/>{tab === 'products' && <div className="admin-product-list"><h2>Product catalog <span>{products.length} items</span></h2>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button onClick={() => remove(p.id)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-layout admin-form-layout">{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>All orders <span>{orders.length} orders</span></h2>{!orders.length ? <div className="empty-state"><p>No orders have been placed yet.</p></div> : orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}</select></label></div></article>)}</div>}</main>;
 }
 function Profile() {
   const { user, updateUser } = useStore();
   const [form, setForm] = useState({
-    name: user?.name || '',
-    email: user?.email || ''
+    first_name: user?.first_name || '',
+    last_name: user?.last_name || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    birthday: user?.birthday ? String(user.birthday).slice(0, 10) : ''
   });
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [picture, setPicture] = useState(null);
   const [preview, setPreview] = useState(user?.profile_picture || '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [addresses, setAddresses] = useState([]);
+  const [addressForm, setAddressForm] = useState({
+    label: 'Address',
+    recipient_name: user?.name || '',
+    phone: user?.phone || '',
+    address_line: '',
+    is_default: false
+  });
+  const [editingAddress, setEditingAddress] = useState(null);
 
   useEffect(() => {
     setForm({
-      name: user?.name || '',
-      email: user?.email || ''
+      first_name: user?.first_name || '',
+      last_name: user?.last_name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      birthday: user?.birthday ? String(user.birthday).slice(0, 10) : ''
     });
     setPreview(user?.profile_picture || '');
+    api('/auth/addresses').then((data) => setAddresses(data.addresses)).catch((err) => setError(err.message));
   }, [user]);
+
+  const resetAddressForm = () => {
+    setEditingAddress(null);
+    setAddressForm({
+      label: 'Address',
+      recipient_name: user?.name || '',
+      phone: user?.phone || '',
+      address_line: '',
+      is_default: addresses.length === 0
+    });
+  };
+
+  async function saveAddress(e) {
+    e.preventDefault();
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const data = await api(
+        editingAddress ? `/auth/addresses/${editingAddress}` : '/auth/addresses',
+        { method: editingAddress ? 'PUT' : 'POST', body: JSON.stringify(addressForm) }
+      );
+      if (editingAddress) {
+        setAddresses(addresses.map((item) => item.id === data.address.id ? data.address : item));
+      } else {
+        setAddresses([...addresses, data.address]);
+      }
+      resetAddressForm();
+      setNotice(editingAddress ? 'Address updated.' : 'Address added.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAddress(id) {
+    if (!window.confirm('Delete this saved address?')) return;
+    try {
+      await api(`/auth/addresses/${id}`, { method: 'DELETE' });
+      const data = await api('/auth/addresses');
+      setAddresses(data.addresses);
+      if (editingAddress === id) resetAddressForm();
+      setNotice('Address deleted.');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function makeDefaultAddress(id) {
+    try {
+      await api(`/auth/addresses/${id}/default`, { method: 'PATCH' });
+      const data = await api('/auth/addresses');
+      setAddresses(data.addresses);
+      setNotice('Default address updated.');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   async function saveProfile(e) {
     e.preventDefault();
@@ -348,10 +532,11 @@ function Profile() {
     try {
       const data = await api('/auth/password', {
         method: 'PUT',
-        body: JSON.stringify({ currentPassword, newPassword })
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
       });
       setCurrentPassword('');
       setNewPassword('');
+      setConfirmPassword('');
       setNotice(data.message || 'Your password has been changed.');
     } catch (err) {
       setError(err.message);
@@ -420,6 +605,36 @@ function Profile() {
       <Notice message={notice} type="success" />
 
       <div className="profile-layout">
+        <section className="form-card">
+          <h2>Saved addresses</h2>
+          <p className="muted">Manage the addresses available during checkout.</p>
+          {!addresses.length && <p className="muted">No saved addresses yet.</p>}
+          {addresses.map((address) => (
+            <div className="saved-address" key={address.id}>
+              <div>
+                <b>{address.label} {address.is_default && <small className="status status-delivered">Default</small>}</b>
+                <p>{address.recipient_name} · {address.phone}</p>
+                <p className="muted">{address.address_line}</p>
+              </div>
+              <div className="admin-row-actions">
+                {!address.is_default && <button type="button" onClick={() => makeDefaultAddress(address.id)}>Default</button>}
+                <button type="button" onClick={() => { setEditingAddress(address.id); setAddressForm(address); }}>Edit</button>
+                <button type="button" onClick={() => deleteAddress(address.id)}>Delete</button>
+              </div>
+            </div>
+          ))}
+          <form onSubmit={saveAddress}>
+            <h3>{editingAddress ? 'Edit address' : 'Add address'}</h3>
+            <label>Label<input required maxLength="80" value={addressForm.label} onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })} placeholder="Home, Work, etc."/></label>
+            <label>Recipient name<input required minLength="2" maxLength="120" value={addressForm.recipient_name} onChange={(e) => setAddressForm({ ...addressForm, recipient_name: e.target.value })}/></label>
+            <label>Phone number<input required inputMode="numeric" pattern="[0-9]{11}" maxLength="11" value={addressForm.phone} onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}/></label>
+            <label>Complete address<textarea required minLength="8" maxLength="500" rows="3" value={addressForm.address_line} onChange={(e) => setAddressForm({ ...addressForm, address_line: e.target.value })}/></label>
+            <label className="checkbox-label"><input type="checkbox" checked={addressForm.is_default} onChange={(e) => setAddressForm({ ...addressForm, is_default: e.target.checked })}/> Set as default address</label>
+            <button className="button button-dark wide-button" disabled={busy}>{editingAddress ? 'Save address' : 'Add address'}</button>
+            {editingAddress && <button type="button" className="button button-outline wide-button" onClick={resetAddressForm}>Cancel</button>}
+          </form>
+        </section>
+
         <section className="form-card profile-card">
           <div className="profile-avatar">
             {pictureUrl ? (
@@ -462,14 +677,26 @@ function Profile() {
 
           <form onSubmit={saveProfile}>
             <label>
-              Full name
+              First name
               <input
-                name="name"
+                name="first_name"
                 required
                 minLength="2"
                 maxLength="120"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                value={form.first_name}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+              />
+            </label>
+
+            <label>
+              Last name
+              <input
+                name="last_name"
+                required
+                minLength="2"
+                maxLength="80"
+                value={form.last_name}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
               />
             </label>
 
@@ -478,10 +705,37 @@ function Profile() {
               <input
                 name="email"
                 type="email"
+                pattern="[^@\s]+@[^@\s]+"
+                title="Enter an email address containing @"
                 required
                 maxLength="255"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </label>
+
+            <label>
+              Phone number
+              <input
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]{11}"
+                maxLength="11"
+                required
+                minLength="11"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+              />
+            </label>
+
+            <label>
+              Birthday
+              <input
+                type="date"
+                max={today}
+                required
+                value={form.birthday}
+                onChange={(e) => setForm({ ...form, birthday: e.target.value })}
               />
             </label>
 
@@ -519,6 +773,18 @@ function Profile() {
               />
             </label>
 
+            <label>
+              Confirm new password
+              <input
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength="8"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </label>
+
             <button className="button button-dark wide-button" disabled={busy}>
               Change password <LockKeyhole size={17} />
             </button>
@@ -544,6 +810,8 @@ export default function App() {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/admin" element={<Admin />} />

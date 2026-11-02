@@ -209,6 +209,11 @@ router.post(
         [p.name, p.description, p.category, p.image_url]
       );
       await syncVariants(rows[0].id, p, req.files);
+      await pool.query(
+        `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
+         VALUES ($1, 'Product created', 'product', $2, $3)`,
+        [req.user.id, rows[0].id, p.name]
+      );
 
       res.status(201).json({ product: rows[0] });
     } catch (error) {
@@ -253,6 +258,11 @@ router.put(
       }
 
       await syncVariants(rows[0].id, p, req.files);
+      await pool.query(
+        `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
+         VALUES ($1, 'Product updated', 'product', $2, $3)`,
+        [req.user.id, rows[0].id, p.name]
+      );
       res.json({ product: rows[0] });
     } catch (error) {
       next(error);
@@ -270,6 +280,11 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
     if (!result.rowCount) {
       return res.status(404).json({ message: 'Product not found.' });
     }
+    await pool.query(
+      `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
+       VALUES ($1, 'Product deleted', 'product', $2, $3)`,
+      [req.user.id, result.rows[0].id, `Product #${result.rows[0].id}`]
+    );
 
     res.json({ message: 'Product deleted.' });
   } catch (error) {

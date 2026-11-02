@@ -96,6 +96,7 @@ Change or remove this demo account before deploying publicly. You can register a
 ### Admin
 - Manage products (create, edit, delete, and add a main image plus repeatable variants with color, name/size, SKU, price, stock, and optional image)
 - View all orders and update order status
+- Admin dashboard with revenue/order/product statistics, low-stock alerts, and recent activity
 
 ## API overview
 Base URL: `http://localhost:5000/api`

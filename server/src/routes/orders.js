@@ -51,6 +51,11 @@ router.post('/', authenticate, async (req, res, next) => {
       'INSERT INTO order_status_history (order_id, status, changed_by) VALUES ($1, $2, $3)',
       [order.id, order.status, req.user.id]
     );
+    await client.query(
+      `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
+       VALUES ($1, 'Order placed', 'order', $2, $3)`,
+      [req.user.id, order.id, `Order #${order.id}`]
+    );
     for (const item of checkedItems) {
       await client.query(
         'INSERT INTO order_items (order_id,product_id,variant_id,product_name,variant_name,unit_price,quantity,line_total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -135,6 +140,11 @@ router.patch('/:id/status', authenticate, requireAdmin, async (req, res, next) =
       'INSERT INTO order_status_history (order_id, status, changed_by) VALUES ($1, $2, $3)',
       [rows[0].id, rows[0].status, req.user.id]
     );
+    await client.query(
+      `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
+       VALUES ($1, 'Order status updated', 'order', $2, $3)`,
+      [req.user.id, rows[0].id, `${rows[0].status} for order #${rows[0].id}`]
+    );
     const customer = await client.query(
       'SELECT u.email FROM users u JOIN orders o ON o.user_id = u.id WHERE o.id = $1',
       [rows[0].id]
@@ -147,6 +157,7 @@ router.patch('/:id/status', authenticate, requireAdmin, async (req, res, next) =
         status: rows[0].status,
         total: rows[0].total
       });
+
     } catch (notificationError) {
       console.error(`Order email notification failed for order #${rows[0].id}:`, notificationError);
     }
@@ -156,6 +167,22 @@ router.patch('/:id/status', authenticate, requireAdmin, async (req, res, next) =
     next(error);
   } finally {
     client.release();
+  }
+});
+
+router.get('/admin/activity', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.action, a.entity_type, a.entity_id, a.details, a.created_at,
+              COALESCE(u.first_name || ' ' || u.last_name, u.name, 'System') AS admin_name
+       FROM admin_activity_log a
+       LEFT JOIN users u ON u.id = a.admin_id
+       ORDER BY a.created_at DESC
+       LIMIT 50`
+    );
+    res.json({ activity: rows });
+  } catch (error) {
+    next(error);
   }
 });
 export default router;

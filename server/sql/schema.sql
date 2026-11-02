@@ -172,6 +172,19 @@ CREATE TABLE IF NOT EXISTS inventory_adjustments (
 CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_variant_id
 ON inventory_adjustments(variant_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS admin_activity_log (
+  id SERIAL PRIMARY KEY,
+  admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(80) NOT NULL,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INTEGER,
+  details TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_activity_log_created_at
+ON admin_activity_log(created_at DESC);
+
 ALTER TABLE order_items
 ADD COLUMN IF NOT EXISTS variant_id INTEGER REFERENCES product_variants(id) ON DELETE SET NULL;
 

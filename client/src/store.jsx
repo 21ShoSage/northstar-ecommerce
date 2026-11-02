@@ -71,24 +71,33 @@ export function StoreProvider({ children }) {
   };
 
   const addToCart = (product) => {
-    const existing = cart.find((x) => x.id === product.id);
+    const variant = product.selectedVariant || product.variants?.[0] || {
+      id: null, name: 'Standard', price: product.price, stock: product.stock
+    };
+    const cartItem = {
+      ...product,
+      variant_id: variant.id,
+      variant_name: variant.name,
+      price: Number(variant.price),
+      stock: Number(variant.stock),
+      image_url: variant.image_url || product.image_url,
+      selectedVariant: undefined,
+      quantity: 1
+    };
+    const existing = cart.find((x) => x.id === product.id && x.variant_id === variant.id);
 
     if (existing) {
       updateCart(
         cart.map((x) =>
-          x.id === product.id
+          x.id === product.id && x.variant_id === variant.id
             ? {
-                ...x,
-                quantity: Math.min(
-                  x.quantity + 1,
-                  product.stock
-                )
+                ...x, quantity: Math.min(x.quantity + 1, variant.stock)
               }
             : x
         )
       );
     } else {
-      updateCart([...cart, { ...product, quantity: 1 }]);
+      updateCart([...cart, cartItem]);
     }
   };
 

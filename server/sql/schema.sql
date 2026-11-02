@@ -26,6 +26,25 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS product_variants (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  color VARCHAR(80) NOT NULL DEFAULT '',
+  name VARCHAR(120) NOT NULL DEFAULT 'Standard',
+  sku VARCHAR(80) NOT NULL UNIQUE,
+  price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+  stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+  image_url TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (product_id, name, color)
+);
+
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS product_variants_product_id_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_variants_product_name_color
+ON product_variants(product_id, name, color);
+
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -48,8 +67,17 @@ CREATE TABLE IF NOT EXISTS order_items (
   line_total NUMERIC(12,2) NOT NULL CHECK (line_total >= 0)
 );
 
+ALTER TABLE order_items
+ADD COLUMN IF NOT EXISTS variant_id INTEGER REFERENCES product_variants(id) ON DELETE SET NULL;
+
+ALTER TABLE order_items
+ADD COLUMN IF NOT EXISTS variant_name VARCHAR(120) NOT NULL DEFAULT 'Standard';
+
 CREATE INDEX IF NOT EXISTS idx_products_category
 ON products(category);
+
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_id
+ON product_variants(product_id);
 
 CREATE INDEX IF NOT EXISTS idx_orders_user_id
 ON orders(user_id);

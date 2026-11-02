@@ -38,6 +38,24 @@ try {
       );
     }
   }
+  await pool.query(`
+    INSERT INTO product_variants (product_id, name, sku, price, stock, image_url)
+    SELECT p.id, 'Standard', 'STD-' || p.id, p.price, p.stock, p.image_url
+    FROM products p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM product_variants v WHERE v.product_id = p.id
+    )
+  `);
+  await pool.query(`
+    UPDATE product_variants v
+    SET color = CASE WHEN v.color = '' THEN 'Standard' ELSE v.color END,
+        image_url = CASE
+          WHEN v.image_url = '' THEN COALESCE(p.image_url, '')
+          ELSE v.image_url
+        END
+    FROM products p
+    WHERE p.id = v.product_id
+  `);
   console.log('Database schema is ready. Demo admin: admin@northstar.local / Admin123!');
 } catch (error) {
   console.error('Database setup failed:', error.message);

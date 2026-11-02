@@ -36,24 +36,88 @@ const upload = multer({
   },
 });
 
-const fields = (body, uploadedImage = '') => ({
+const fields = (body) => ({
   name: String(body.name || '').trim(),
   description: String(body.description || '').trim(),
   category: String(body.category || 'General').trim(),
+  image_url: String(body.image_url || '').trim(),
   price: Number(body.price),
-  image_url: uploadedImage || String(body.image_url || '').trim(),
-  stock: Number(body.stock),
+  variants: String(body.variants || '').trim(),
 });
 
-function validate(p) {
+function validate(p, files = []) {
   if (p.name.length < 2) return 'Product name must be at least 2 characters.';
-  if (!Number.isFinite(p.price) || p.price < 0)
-    return 'Price must be zero or greater.';
-  if (!Number.isInteger(p.stock) || p.stock < 0)
-    return 'Stock must be a whole number zero or greater.';
   if (!p.category) return 'Category is required.';
+  if (p.variants) {
+    try {
+      const variants = JSON.parse(p.variants);
+      if (!Array.isArray(variants)) return 'Variants must be a JSON array.';
+      for (const [index, variant] of variants.entries()) {
+        const hasImage = String(variant.image_url || '').trim()
+          || files.some((file) => file.fieldname === `variant_image_${index}`);
+        if (!String(variant.name || '').trim() || !String(variant.sku || '').trim() ||
+            !Number.isFinite(Number(variant.price)) || Number(variant.price) < 0 ||
+            !Number.isInteger(Number(variant.stock)) || Number(variant.stock) < 0 ||
+            !hasImage) {
+          return 'Each variant needs a color, name, SKU, price, stock, and image.';
+        }
+      }
+    } catch {
+      return 'Variants must be valid JSON.';
+    }
+  }
   return null;
 }
+
+async function syncVariants(productId, product, files = []) {
+  const parsed = product.variants
+    ? JSON.parse(product.variants)
+    : [];
+
+  if (!parsed.length) throw Object.assign(new Error('Add at least one variant.'), { status: 400 });
+  await pool.query('DELETE FROM product_variants WHERE product_id = $1', [productId]);
+  for (const [index, variant] of parsed.entries()) {
+    const uploadedFile = files.find((file) => file.fieldname === `variant_image_${index}`);
+    const uploadedImage = uploadedFile
+      ? `/uploads/products/${uploadedFile.filename}`
+      : String(variant.image_url || '').trim();
+    await pool.query(
+      `INSERT INTO product_variants (product_id, color, name, sku, price, stock, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [productId, String(variant.color || '').trim(), String(variant.name).trim(),
+        String(variant.sku).trim(), Number(variant.price), Number(variant.stock), uploadedImage]
+    );
+  }
+  await pool.query(
+    `WITH first_variant AS (
+       SELECT price, image_url
+       FROM product_variants
+       WHERE product_id = $1
+       ORDER BY id
+       LIMIT 1
+     ),
+     totals AS (
+       SELECT COALESCE(SUM(stock), 0)::int AS stock
+       FROM product_variants
+       WHERE product_id = $1
+     )
+     UPDATE products
+     SET price = first_variant.price,
+         stock = totals.stock,
+         updated_at = NOW()
+     FROM first_variant, totals
+     WHERE products.id = $1`,
+    [productId]
+  );
+}
+
+const variantSelect = `COALESCE(
+  (SELECT json_agg(json_build_object(
+    'id', v.id, 'color', v.color, 'name', v.name, 'sku', v.sku,
+    'price', v.price::float, 'stock', v.stock, 'image_url', v.image_url
+    ) ORDER BY v.id) FROM product_variants v WHERE v.product_id = p.id),
+  '[]'
+) AS variants`;
 
 router.get('/', async (req, res, next) => {
   try {
@@ -61,12 +125,15 @@ router.get('/', async (req, res, next) => {
     const category = String(req.query.category || '').trim();
 
     const { rows } = await pool.query(
-      `SELECT id, name, description, category, price::float AS price,
-              image_url, stock, created_at
-       FROM products
-       WHERE (name ILIKE $1 OR description ILIKE $1)
-         AND ($2 = '' OR category = $2)
-       ORDER BY created_at DESC, id DESC`,
+      `SELECT p.id, p.name, p.description, p.category, p.price::float AS price,
+              p.image_url,
+              COALESCE(SUM(v.stock), p.stock)::int AS stock,
+              p.created_at, ${variantSelect}
+       FROM products p LEFT JOIN product_variants v ON v.product_id = p.id
+       WHERE (p.name ILIKE $1 OR p.description ILIKE $1)
+         AND ($2 = '' OR p.category = $2)
+       GROUP BY p.id
+       ORDER BY p.created_at DESC, p.id DESC`,
       [q, category]
     );
 
@@ -79,9 +146,13 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, description, category, price::float AS price,
-              image_url, stock
-       FROM products WHERE id = $1`,
+      `SELECT p.id, p.name, p.description, p.category, p.price::float AS price,
+              p.image_url,
+              COALESCE(SUM(v.stock), p.stock)::int AS stock,
+              ${variantSelect}
+       FROM products p LEFT JOIN product_variants v ON v.product_id = p.id
+       WHERE p.id = $1
+       GROUP BY p.id`,
       [req.params.id]
     );
 
@@ -99,25 +170,24 @@ router.post(
   '/',
   authenticate,
   requireAdmin,
-  upload.single('product_image'),
+  upload.any(),
   async (req, res, next) => {
     try {
-      const uploadedImage = req.file
-        ? `/uploads/products/${req.file.filename}`
-        : '';
-
-      const p = fields(req.body, uploadedImage);
-      const error = validate(p);
+      const p = fields(req.body);
+      const mainImage = req.files?.find((file) => file.fieldname === 'product_image');
+      if (mainImage) p.image_url = `/uploads/products/${mainImage.filename}`;
+      const error = validate(p, req.files);
 
       if (error) return res.status(400).json({ message: error });
 
       const { rows } = await pool.query(
         `INSERT INTO products
           (name, description, category, price, image_url, stock)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         VALUES ($1, $2, $3, 0, $4, 0)
          RETURNING *`,
-        [p.name, p.description, p.category, p.price, p.image_url, p.stock]
+        [p.name, p.description, p.category, p.image_url]
       );
+      await syncVariants(rows[0].id, p, req.files);
 
       res.status(201).json({ product: rows[0] });
     } catch (error) {
@@ -130,15 +200,13 @@ router.put(
   '/:id',
   authenticate,
   requireAdmin,
-  upload.single('product_image'),
+  upload.any(),
   async (req, res, next) => {
     try {
-      const uploadedImage = req.file
-        ? `/uploads/products/${req.file.filename}`
-        : '';
-
-      const p = fields(req.body, uploadedImage);
-      const error = validate(p);
+      const p = fields(req.body);
+      const mainImage = req.files?.find((file) => file.fieldname === 'product_image');
+      if (mainImage) p.image_url = `/uploads/products/${mainImage.filename}`;
+      const error = validate(p, req.files);
 
       if (error) return res.status(400).json({ message: error });
 
@@ -147,22 +215,14 @@ router.put(
          SET name = $1,
              description = $2,
              category = $3,
-             price = $4,
-             image_url = CASE
-               WHEN $5 <> '' THEN $5
-               ELSE image_url
-             END,
-             stock = $6,
+             price = 0,
+             image_url = CASE WHEN $4 <> '' THEN $4 ELSE image_url END,
+             stock = 0,
              updated_at = NOW()
-         WHERE id = $7
+         WHERE id = $5
          RETURNING *`,
         [
-          p.name,
-          p.description,
-          p.category,
-          p.price,
-          p.image_url,
-          p.stock,
+          p.name, p.description, p.category, p.image_url,
           req.params.id,
         ]
       );
@@ -171,6 +231,7 @@ router.put(
         return res.status(404).json({ message: 'Product not found.' });
       }
 
+      await syncVariants(rows[0].id, p, req.files);
       res.json({ product: rows[0] });
     } catch (error) {
       next(error);

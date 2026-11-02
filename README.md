@@ -72,14 +72,14 @@ Change or remove this demo account before deploying publicly. You can register a
 ## Features
 ### Customer
 - Browse and search products
-- View product details
+- View product details with a main product image, selectable color/size variants, variant-image gallery, and variant-level stock
 - Add/remove items and change quantities in a persistent browser cart
 - Register and sign in
 - Checkout with shipping details
 - View order history
 
 ### Admin
-- Manage products (create, edit, delete)
+- Manage products (create, edit, delete, and add a main image plus repeatable variants with color, name/size, SKU, price, stock, and optional image)
 - View all orders and update order status
 
 ## API overview

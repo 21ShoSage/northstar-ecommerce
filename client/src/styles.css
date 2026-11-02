@@ -383,3 +383,10 @@ input[type=file]::file-selector-button{border-radius:999px}
 
 @media(max-width:1000px){.hero-visual>img{height:460px}.hero-stamp{left:12px}}
 @media(max-width:650px){.site-header{width:calc(100% - 20px);height:62px;margin-top:10px;top:10px}.nav-wrap{padding:0 10px 0 16px}.nav-links{top:calc(100% + 8px);left:0;right:0;border:1px solid var(--line);border-radius:26px;padding:16px;gap:6px;background:var(--surface);box-shadow:var(--sh)}.hero{padding-top:28px}.hero h1{font-size:48px}.hero-visual>img{height:360px;border-radius:28px}.hero-stamp{bottom:56px}.hero-stats div{padding:14px}.story-band{border-radius:28px;width:calc(100% - 20px)}.footer-inner{width:calc(100% - 20px);padding:24px}.auth-art{border-radius:0 0 32px 32px}.order-summary{padding:24px}.cart-item{padding:12px}.admin-tabs{border-radius:24px}.benefits>div{padding:18px}}
+
+/* ===== v2.1: one shared content width, left-aligned (no centered/narrow cards) ===== */
+.page-shell,.admin-shell{max-width:1320px}
+@media(min-width:1001px){.page-shell{padding-inline:48px}}
+.orders-list,.admin-orders,.checkout-layout,.profile-layout,.admin-add,.admin-layout{width:100%;max-width:none;margin-inline:0}
+.admin-add>.admin-form{width:100%;max-width:none}
+.admin-add h2{font-size:25px;margin:0 0 26px}

@@ -137,7 +137,7 @@ function Home() {
 function Shop() {
   const [products, setProducts] = useState([]), [q, setQ] = useState(''), [category, setCategory] = useState('All'), [loading, setLoading] = useState(true), [error, setError] = useState('');
   useEffect(() => { setLoading(true); api(`/products?q=${encodeURIComponent(q)}${category !== 'All' ? `&category=${encodeURIComponent(category)}` : ''}`).then(d => { setProducts(d.products); setError(''); }).catch(e => setError(e.message)).finally(() => setLoading(false)); }, [q, category]);
-  const categories = ['All', ...new Set(products.map(p => p.category))];
+  const categories = ['All', 'General', 'Fashion', 'Home', 'Accessories', 'Electronics'];
   return <main className="page-shell"><div className="page-heading"><span className="eyebrow">THE COLLECTION</span><h1>Shop <em>all.</em></h1><p>Useful things, considered carefully.</p></div><div className="shop-tools"><label className="search-box"><Search size={18}/><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search products..." aria-label="Search products"/></label><div className="category-pills">{categories.map(c => <button key={c} className={category === c ? 'pill active' : 'pill'} onClick={() => setCategory(c)}>{c}</button>)}</div></div><Notice message={error}/>{loading ? <div className="loading">Finding good things…</div> : products.length ? <div className="product-grid shop-grid">{products.map((p,i) => <ProductCard key={p.id} product={p} index={i}/>)}</div> : <div className="empty-state"><ShoppingBag size={28}/><h3>Nothing found just yet.</h3><p>Try another search or choose a different category.</p><button className="button button-dark" onClick={() => { setQ(''); setCategory('All'); }}>Clear filters</button></div>}</main>;
 }
 
@@ -146,11 +146,14 @@ function ProductDetail() {
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [error, setError] = useState('');
-  const [selectedVariantId, setSelectedVariantId] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedSize, setSelectedSize] = useState(null);
   const [cartNotice, setCartNotice] = useState('');
   const { user, addToCart } = useStore();
 
   useEffect(() => {
+    setSelectedColor(null);
+    setSelectedSize(null);
     api(`/products/${id}`)
       .then((d) => setProduct(d.product))
       .catch((e) => setError(e.message));
@@ -170,12 +173,41 @@ function ProductDetail() {
   if (!product) {
     return <main className="page-shell loading">Loading product…</main>;
   }
-  const selectedVariant = product.variants?.find((variant) => variant.id === selectedVariantId)
-    || product.variants?.[0]
-    || { id: null, name: 'Standard', price: product.price, stock: product.stock };
-  const displayedImage = selectedVariantId === null
+  const variants = product.variants?.length ? product.variants : [{
+    id: null, color: 'Standard', name: 'Standard', price: product.price, stock: product.stock, image_url: product.image_url
+  }];
+  const colors = [...new Set(variants.map((variant) => variant.color || 'Standard'))];
+  const sizes = [...new Set(variants.map((variant) => variant.name || 'Standard'))];
+  const availableVariants = variants.filter((variant) => Number(variant.stock) > 0);
+  const firstAvailable = availableVariants[0] || variants[0];
+  const defaultColor = firstAvailable?.color || 'Standard';
+  const defaultSize = firstAvailable?.name || 'Standard';
+  const activeColor = selectedColor || defaultColor;
+  const activeColorVariants = variants.filter((variant) =>
+    (variant.color || 'Standard') === activeColor
+  );
+  const activeSize = selectedSize
+    || activeColorVariants.find((variant) => Number(variant.stock) > 0)?.name
+    || defaultSize;
+  const colorVariant = activeColorVariants.find((variant) => Number(variant.stock) > 0)
+    || activeColorVariants[0]
+    || firstAvailable;
+  const selectedVariant = variants.find((variant) =>
+    (variant.color || 'Standard') === activeColor
+    && (variant.name || 'Standard') === activeSize
+  ) || { ...firstAvailable, stock: 0 };
+  const isColorAvailable = (color) => variants.some((variant) =>
+    (variant.color || 'Standard') === color
+    && Number(variant.stock) > 0
+  );
+  const isSizeAvailable = (size) => variants.some((variant) =>
+    (variant.color || 'Standard') === activeColor
+    && (variant.name || 'Standard') === size
+    && Number(variant.stock) > 0
+  );
+  const displayedImage = selectedColor === null
     ? product.image_url
-    : selectedVariant.image_url || product.image_url;
+    : colorVariant.image_url || product.image_url;
 
   return (
     <main className="page-shell">
@@ -202,7 +234,12 @@ function ProductDetail() {
                   className="detail-gallery-thumb"
                   key={image.id}
                   onClick={() => {
-                    setSelectedVariantId(image.id === 'main' ? null : image.id);
+                    if (image.id === 'main') {
+                      setSelectedColor(null);
+                      setSelectedSize(null);
+                    } else {
+                      setSelectedColor(image.color || 'Standard');
+                    }
                   }}
                   aria-label={image.id === 'main' ? 'View main product image' : `View ${image.color || image.name} image`}
                 >
@@ -217,11 +254,21 @@ function ProductDetail() {
           <h1>{product.name}</h1>
           <span className="detail-price">{money(selectedVariant.price)}</span>
           <p>{product.description}</p>
-          {product.variants?.length > 1 && <label>Choose an option
-            <select value={selectedVariant.id} onChange={(e) => setSelectedVariantId(Number(e.target.value))}>
-              {product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.color} / {variant.name} · {variant.sku}</option>)}
-            </select>
-          </label>}
+          {colors.length > 1 && <div className="variant-group"><span className="variant-label">Color</span><div className="variant-buttons">{colors.map((color) => <button type="button" key={color} className={`variant-button ${activeColor === color ? 'active' : ''}`} disabled={!isColorAvailable(color)} onClick={() => {
+            setSelectedColor(color);
+            const availableSize = variants.find((variant) =>
+              (variant.color || 'Standard') === color
+              && Number(variant.stock) > 0
+            )?.name || 'Standard';
+            if (!variants.some((variant) =>
+              (variant.color || 'Standard') === color
+              && (variant.name || 'Standard') === activeSize
+              && Number(variant.stock) > 0
+            )) {
+              setSelectedSize(availableSize);
+            }
+          }}>{color}</button>)}</div></div>}
+          {sizes.length > 1 && <div className="variant-group"><span className="variant-label">Size</span><div className="variant-buttons">{sizes.map((size) => <button type="button" key={size} className={`variant-button ${activeSize === size ? 'active' : ''}`} disabled={!isSizeAvailable(size)} onClick={() => setSelectedSize(size)}>{size}</button>)}</div></div>}
 
           <p className="stock-note">
             {selectedVariant.stock > 0
@@ -382,24 +429,34 @@ function Orders() {
   if (!user) return <main className="page-shell"><div className="empty-state"><h3>Sign in to view your orders.</h3><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
   return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR NORTHSTAR ACCOUNT</span><h1>Order <em>history.</em></h1><p>Every order, all in one place.</p></div><Notice message={notice} type="success"/><Notice message={error}/>{!orders.length && !error ? <div className="empty-state"><ClipboardList size={30}/><h3>No orders yet.</h3><p>Your next everyday favorite is waiting.</p><Link to="/shop" className="button button-dark">Explore the shop</Link></div> : <div className="orders-list">{orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5,'0')}</span><h3>{new Date(o.created_at).toLocaleDateString()}</h3></div><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span></div><div className="order-products">{o.items.map((it,i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="order-card-total"><span>Total</span><strong>{money(o.total)}</strong></div><p className="muted order-address">Delivering to: {o.shipping_address}</p></article>)}</div>}</main>;
 }
+function generateVariantSku(productName, color, size) {
+  const part = (value) => String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return [productName, color, size].map(part).filter(Boolean).join('-').slice(0, 80);
+}
+
 function Admin() {
   const [products, setProducts] = useState([]), [orders, setOrders] = useState([]);
   const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState('dashboard'), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] });
+  const [form, setForm] = useState({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, colors: [], sizes: ['Standard'], variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] });
+  const [colorDraft, setColorDraft] = useState(''), [sizeDraft, setSizeDraft] = useState('');
   const categories = ['Accessories', 'Electronics', 'Home', 'Fashion', 'General'];
   const { user } = useStore();
   async function refresh() { const [p, o, a] = await Promise.all([api('/products'), api('/orders'), api('/orders/admin/activity')]); setProducts(p.products); setOrders(o.orders); setActivity(a.activity); }
   useEffect(() => { if (user?.role === 'admin') refresh().catch(e => setError(e.message)); }, [user]);
-  const reset = () => { setEditing(null); setForm({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] }); };
-  const edit = (p) => { setEditing(p.id); setForm({ name: p.name, description: p.description, category: p.category, image_url: p.image_url || '', imageFile: null, variants: (p.variants || []).map(({ color, name, sku, price, stock, image_url }) => ({ color: color || '', name, sku, price: String(price), stock: String(stock), image_url: image_url || '', imageFile: null })) }); setTab('add-product'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  async function save(e) { e.preventDefault(); setError(''); setNotice(''); const body = new FormData(); body.append('name', form.name); body.append('description', form.description); body.append('category', form.category); body.append('image_url', form.imageFile ? '' : form.image_url); body.append('variants', JSON.stringify(form.variants.map(v => ({ color: v.color.trim(), name: v.name.trim(), sku: v.sku.trim(), price: Number(v.price), stock: Number(v.stock), image_url: v.image_url })))); form.variants.forEach((v, i) => { if (v.imageFile) body.append(`variant_image_${i}`, v.imageFile); }); if (form.imageFile) body.append('product_image', form.imageFile); try { await api(editing ? `/products/${editing}` : '/products', { method: editing ? 'PUT' : 'POST', body }); setNotice(editing ? 'Product updated.' : 'Product created.'); reset(); setTab('products'); await refresh(); } catch (e) { setError(e.message); } }
+  const reset = () => { setEditing(null); setColorDraft(''); setSizeDraft(''); setForm({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, colors: [], sizes: ['Standard'], variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] }); };
+  const edit = (p) => { const variants = (p.variants || []).map(({ color, name, sku, price, stock, image_url }) => ({ color: color || '', name: name || 'Standard', sku, price: String(price), stock: String(stock), image_url: image_url || '', imageFile: null })); setEditing(p.id); setColorDraft(''); setSizeDraft(''); setForm({ name: p.name, description: p.description, category: p.category, image_url: p.image_url || '', imageFile: null, colors: [...new Set(variants.map(v => v.color).filter(Boolean))], sizes: [...new Set(variants.map(v => v.name).filter(Boolean))], variants }); setTab('add-product'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  async function save(e) { e.preventDefault(); setError(''); setNotice(''); const colors = form.colors.map(c => c.trim()).filter(Boolean), sizes = form.sizes.map(s => s.trim()).filter(Boolean); if (!colors.length || !sizes.length) { setError('Configure at least one color and one size before saving.'); return; } if (form.variants.some(v => !colors.includes(v.color) || !sizes.includes(v.name))) { setError('Every variant must use a configured color and size.'); return; } const variants = form.variants.map(v => ({ ...v, sku: generateVariantSku(form.name, v.color, v.name) })); const skus = variants.map(v => v.sku); if (new Set(skus).size !== skus.length) { setError('Each color and size combination must be unique.'); return; } const body = new FormData(); body.append('name', form.name); body.append('description', form.description); body.append('category', form.category); body.append('image_url', form.imageFile ? '' : form.image_url); body.append('variants', JSON.stringify(variants.map(v => ({ color: v.color.trim(), name: v.name.trim(), sku: v.sku, price: Number(v.price), stock: Number(v.stock), image_url: v.image_url })))); form.variants.forEach((v, i) => { if (v.imageFile) body.append(`variant_image_${i}`, v.imageFile); }); if (form.imageFile) body.append('product_image', form.imageFile); try { await api(editing ? `/products/${editing}` : '/products', { method: editing ? 'PUT' : 'POST', body }); setNotice(editing ? 'Product updated.' : 'Product created.'); reset(); setTab('products'); await refresh(); } catch (e) { setError(e.message); } }
   async function remove(id) { if (!window.confirm('Delete this product?')) return; try { await api(`/products/${id}`, { method: 'DELETE' }); setNotice('Product deleted.'); await refresh(); } catch (e) { setError(e.message); } }
   async function updateStatus(id, status) { try { await api(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); setNotice(`Order #${id} updated.`); await refresh(); } catch (e) { setError(e.message); } }
   const updateVariant = (index, key, value) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, [key]: value } : v) });
   if (user?.role !== 'admin') return <main className="page-shell"><div className="empty-state"><ShieldCheck size={32}/><h3>Administrator access only.</h3><p>Sign in with an administrator account to manage the store.</p><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
-  const productForm = <form className="form-card admin-form" onSubmit={save}><h2>{editing ? 'Edit product' : 'Add a product'}</h2><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Variant fields and images are required.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: '', name: '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<input required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)} placeholder="e.g. Black"/></label><label>Name / size<input required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} placeholder="e.g. Medium"/></label><label>SKU<input required value={v.sku} onChange={e => updateVariant(i, 'sku', e.target.value)} placeholder="e.g. ITEM-BLK-M"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
+  const productForm = <form className="form-card admin-form" onSubmit={save}><h2>{editing ? 'Edit product' : 'Add a product'}</h2><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Configure at least one color and size, then choose them from each variant dropdown. SKUs are generated automatically.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: form.colors[0] || '', name: form.sizes[0] || '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div><div className="variant-config"><div className="variant-config-row"><label>New color<input value={colorDraft} onChange={e => setColorDraft(e.target.value)} placeholder="e.g. White"/></label><button type="button" className="button button-outline" onClick={() => { const value = colorDraft.trim(); if (value && !form.colors.includes(value)) setForm({ ...form, colors: [...form.colors, value], variants: form.variants.map(v => v.color ? v : { ...v, color: value }) }); setColorDraft(''); }}>Add color</button></div><div className="variant-config-row"><label>New size<input value={sizeDraft} onChange={e => setSizeDraft(e.target.value)} placeholder="e.g. Medium"/></label><button type="button" className="button button-outline" onClick={() => { const value = sizeDraft.trim(); if (value && !form.sizes.includes(value)) setForm({ ...form, sizes: [...form.sizes, value], variants: form.variants.map(v => v.name ? v : { ...v, name: value }) }); setSizeDraft(''); }}>Add size</button></div><div className="variant-options"><div><span className="muted">Colors</span>{form.colors.map(color => <button type="button" className="option-chip" key={color} onClick={() => form.colors.length > 1 && setForm({ ...form, colors: form.colors.filter(item => item !== color), variants: form.variants.map(v => v.color === color ? { ...v, color: '' } : v) })}>{color} ×</button>)}</div><div><span className="muted">Sizes</span>{form.sizes.map(size => <button type="button" className="option-chip" key={size} onClick={() => form.sizes.length > 1 && setForm({ ...form, sizes: form.sizes.filter(item => item !== size), variants: form.variants.map(v => v.name === size ? { ...v, name: '' } : v) })}>{size} ×</button>)}</div></div></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<select required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)}><option value="" disabled>Select color</option>{form.colors.map(color => <option key={color} value={color}>{color}</option>)}</select></label><label>Name / size<select required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)}><option value="" disabled>Select size</option>{form.sizes.map(size => <option key={size} value={size}>{size}</option>)}</select></label><label>SKU<input readOnly value={generateVariantSku(form.name, v.color, v.name)} placeholder="Generated automatically"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
   return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div><div><span>LOW STOCK</span><b>{products.filter(p => p.low_stock).length}</b></div></div><div className="admin-tabs"><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard size={16}/> Dashboard</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div><Notice message={error}/><Notice message={notice} type="success"/>{tab === 'dashboard' && <div className="admin-dashboard"><section className="admin-product-list"><h2>Low-stock products <span>{products.filter(p => p.low_stock).length} items</span></h2>{products.filter(p => p.low_stock).length ? products.filter(p => p.low_stock).map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.stock} remaining · threshold {p.low_stock_threshold}</small></div><strong className="status status-pending">Low stock</strong></div>) : <p className="muted">All products have healthy stock levels.</p>}</section><section className="admin-product-list"><h2>Recent activity <span>{activity.length} events</span></h2>{activity.length ? activity.slice(0, 10).map(item => <div className="activity-row" key={item.id}><div><b>{item.action}</b><small>{item.details} · {item.admin_name}</small></div><time>{new Date(item.created_at).toLocaleString()}</time></div>) : <p className="muted">No admin activity recorded yet.</p>}</section></div>}{tab === 'products' && <div className="admin-product-list"><h2>Product catalog <span>{products.length} items</span></h2>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button onClick={() => remove(p.id)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-layout admin-form-layout">{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>All orders <span>{orders.length} orders</span></h2>{!orders.length ? <div className="empty-state"><p>No orders have been placed yet.</p></div> : orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}</select></label></div></article>)}</div>}</main>;
 }
 function Profile() {

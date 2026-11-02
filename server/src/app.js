@@ -16,7 +16,9 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('tinuga')) {
 
 const app = express();
 app.use('/uploads', express.static(path.resolve('uploads')));
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100 }), authRoutes);

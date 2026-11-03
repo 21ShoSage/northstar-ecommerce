@@ -472,7 +472,7 @@ function AddCategory({ onAdded }) {
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
   if (!open) return <button type="button" className="button button-outline add-category-btn" onClick={() => setOpen(true)}><Plus size={15}/> Add category</button>;
-  return <div className="add-category"><input autoFocus value={name} maxLength={80} placeholder="New category name" aria-label="New category name" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') close(); }}/><button type="button" className="button button-dark" disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add'}</button><button type="button" className="button button-outline" onClick={close}>Cancel</button></div>;
+  return <div className="category-config-row"><label>New category<input autoFocus value={name} maxLength={80} placeholder="e.g. Accessories" aria-label="New category name" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') close(); }}/></label><button type="button" className="button button-dark" disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add category'}</button><button type="button" className="button button-outline" onClick={close}>Cancel</button></div>;
 }
 function generateVariantSku(productName, color, size) { const normalize = (value) => String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, ''); return [productName, color, size].map(normalize).filter(Boolean).join('-').slice(0, 80); }
 function Admin() {

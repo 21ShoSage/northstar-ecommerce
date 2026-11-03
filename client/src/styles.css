@@ -137,6 +137,7 @@ h1,h2,h3{font-weight:400}
 .detail-assurances{display:flex;gap:24px;flex-wrap:wrap;margin-top:28px;color:var(--muted);font-size:12px}
 .detail-assurances span{display:flex;align-items:center;gap:8px}
 .detail-assurances svg{color:var(--accent);stroke-width:1.4}
+.variant-group{margin:22px 0}.variant-label{display:block;color:var(--muted);font-size:12px;margin-bottom:10px}.variant-buttons{display:flex;flex-wrap:wrap;gap:9px}.variant-button{border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);padding:10px 15px;font-size:13px;transition:.2s}.variant-button:hover,.variant-button.active{border-color:var(--accent);background:var(--accent);color:#fff}.variant-button:disabled{cursor:not-allowed;opacity:.4;text-decoration:line-through}.variant-button:disabled:hover{border-color:var(--line);background:var(--bg);color:var(--ink)}
 
 /* cart / checkout */
 .cart-layout,.checkout-layout{display:grid;grid-template-columns:1.5fr .8fr;gap:56px;align-items:start}

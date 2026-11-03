@@ -159,11 +159,14 @@ function ProductDetail() {
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [error, setError] = useState('');
-  const [selectedVariantId, setSelectedVariantId] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedSize, setSelectedSize] = useState(null);
   const { user, addToCart } = useStore();
   const toast = useToast();
 
   useEffect(() => {
+    setSelectedColor(null);
+    setSelectedSize(null);
     api(`/products/${id}`)
       .then((d) => setProduct(d.product))
       .catch((e) => setError(e.message));
@@ -183,12 +186,38 @@ function ProductDetail() {
   if (!product) {
     return <main className="page-shell loading">Loading product…</main>;
   }
-  const selectedVariant = product.variants?.find((variant) => variant.id === selectedVariantId)
-    || product.variants?.[0]
-    || { id: null, name: 'Standard', price: product.price, stock: product.stock };
-  const displayedImage = selectedVariantId === null
+  const variants = product.variants?.length ? product.variants : [{
+    id: null, color: 'Standard', name: 'Standard', price: product.price, stock: product.stock, image_url: product.image_url
+  }];
+  const colors = [...new Set(variants.map((variant) => variant.color || 'Standard'))];
+  const sizes = [...new Set(variants.map((variant) => variant.name || 'Standard'))];
+  const availableVariants = variants.filter((variant) => Number(variant.stock) > 0);
+  const firstAvailable = availableVariants[0] || variants[0];
+  const defaultColor = firstAvailable?.color || 'Standard';
+  const defaultSize = firstAvailable?.name || 'Standard';
+  const activeColor = selectedColor || defaultColor;
+  const activeColorVariants = variants.filter((variant) => (variant.color || 'Standard') === activeColor);
+  const activeSize = selectedSize
+    || activeColorVariants.find((variant) => Number(variant.stock) > 0)?.name
+    || defaultSize;
+  const colorVariant = activeColorVariants.find((variant) => Number(variant.stock) > 0)
+    || activeColorVariants[0]
+    || firstAvailable;
+  const selectedVariant = variants.find((variant) =>
+    (variant.color || 'Standard') === activeColor
+    && (variant.name || 'Standard') === activeSize
+  ) || { ...firstAvailable, stock: 0 };
+  const isColorAvailable = (color) => variants.some((variant) =>
+    (variant.color || 'Standard') === color && Number(variant.stock) > 0
+  );
+  const isSizeAvailable = (size) => variants.some((variant) =>
+    (variant.color || 'Standard') === activeColor
+    && (variant.name || 'Standard') === size
+    && Number(variant.stock) > 0
+  );
+  const displayedImage = selectedColor === null
     ? product.image_url
-    : selectedVariant.image_url || product.image_url;
+    : colorVariant.image_url || product.image_url;
 
   return (
     <main className="page-shell">
@@ -215,7 +244,12 @@ function ProductDetail() {
                   className="detail-gallery-thumb"
                   key={image.id}
                   onClick={() => {
-                    setSelectedVariantId(image.id === 'main' ? null : image.id);
+                    if (image.id === 'main') {
+                      setSelectedColor(null);
+                      setSelectedSize(null);
+                    } else {
+                      setSelectedColor(image.color || 'Standard');
+                    }
                   }}
                   aria-label={image.id === 'main' ? 'View main product image' : `View ${image.color || image.name} image`}
                 >
@@ -230,11 +264,19 @@ function ProductDetail() {
           <h1>{product.name}</h1>
           <span className="detail-price">{money(selectedVariant.price)}</span>
           <p>{product.description}</p>
-          {product.variants?.length > 1 && <label>Choose an option
-            <select value={selectedVariant.id} onChange={(e) => setSelectedVariantId(Number(e.target.value))}>
-              {product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.color} / {variant.name} · {variant.sku}</option>)}
-            </select>
-          </label>}
+          {colors.length > 1 && <div className="variant-group"><span className="variant-label">Color</span><div className="variant-buttons">{colors.map((color) => <button type="button" key={color} className={`variant-button ${activeColor === color ? 'active' : ''}`} disabled={!isColorAvailable(color)} onClick={() => {
+            setSelectedColor(color);
+            if (!variants.some((variant) =>
+              (variant.color || 'Standard') === color
+              && (variant.name || 'Standard') === activeSize
+              && Number(variant.stock) > 0
+            )) {
+              setSelectedSize(variants.find((variant) =>
+                (variant.color || 'Standard') === color && Number(variant.stock) > 0
+              )?.name || 'Standard');
+            }
+          }}>{color}</button>)}</div></div>}
+          {sizes.length > 1 && <div className="variant-group"><span className="variant-label">Size</span><div className="variant-buttons">{sizes.map((size) => <button type="button" key={size} className={`variant-button ${activeSize === size ? 'active' : ''}`} disabled={!isSizeAvailable(size)} onClick={() => setSelectedSize(size)}>{size}</button>)}</div></div>}
 
           <p className="stock-note">
             {selectedVariant.stock > 0

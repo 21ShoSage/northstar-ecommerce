@@ -80,6 +80,55 @@ test('rejects invalid login credentials safely', async () => {
   assert.equal(result.data.message, 'Email or password is incorrect.');
 });
 
+test('allows admins to create, rename, and delete categories', async () => {
+  const originalName = `Category ${Date.now()}`;
+  const renamedName = `${originalName} Updated`;
+  let categoryId;
+  let productId;
+  try {
+    const created = await request('/categories', {
+      method: 'POST',
+      token: adminToken,
+      body: JSON.stringify({ name: originalName })
+    });
+    assert.equal(created.response.status, 201);
+    categoryId = created.data.category.id;
+
+    const product = await pool.query(
+      'INSERT INTO products (name, category, price) VALUES ($1, $2, 12) RETURNING id',
+      ['Category test product', originalName]
+    );
+    productId = product.rows[0].id;
+
+    const updated = await request(`/categories/${categoryId}`, {
+      method: 'PUT',
+      token: adminToken,
+      body: JSON.stringify({ name: renamedName })
+    });
+    assert.equal(updated.response.status, 200);
+    assert.equal(updated.data.category.name, renamedName);
+    assert.equal(updated.data.category.product_count, 1);
+    const renamedProduct = await pool.query('SELECT category FROM products WHERE id = $1', [productId]);
+    assert.equal(renamedProduct.rows[0].category, renamedName);
+
+    const deleted = await request(`/categories/${categoryId}`, {
+      method: 'DELETE',
+      token: adminToken
+    });
+    assert.equal(deleted.response.status, 200);
+    assert.equal(deleted.data.moved_products, 1);
+    assert.ok(deleted.data.fallback_category);
+    const movedProduct = await pool.query('SELECT category FROM products WHERE id = $1', [productId]);
+    assert.equal(movedProduct.rows[0].category, deleted.data.fallback_category.name);
+
+    const categories = await request('/categories');
+    assert.equal(categories.data.categories.some(category => category.id === categoryId), false);
+  } finally {
+    if (productId) await pool.query('DELETE FROM products WHERE id = $1', [productId]);
+    if (categoryId) await pool.query('DELETE FROM categories WHERE id = $1', [categoryId]);
+  }
+});
+
 test('rejects invalid registration and reset tokens', async () => {
   const registration = await request('/auth/register', {
     method: 'POST',

@@ -16,7 +16,14 @@ const cartKey = (user) => (user?.id ? `northstar_cart_${user.id}` : null);
 const readCart = (key) => {
   if (!key) return [];
   try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
+    return JSON.parse(localStorage.getItem(key) || '[]').map((item) => {
+      const variant = item.variants?.find((entry) => entry.id === item.variant_id);
+      return {
+        ...item,
+        image_url: variant?.image_url || item.image_url,
+        variant_color: item.variant_color || variant?.color || ''
+      };
+    });
   } catch {
     return [];
   }
@@ -95,11 +102,11 @@ export function StoreProvider({ children }) {
     const cartItem = {
       ...product,
       variant_id: variant.id,
+      variant_color: variant.color || '',
       variant_name: variant.name,
       price: Number(variant.price),
       stock: Number(variant.stock),
-      // Use the image the shopper was looking at, so the cart matches the shop page.
-      image_url: product.display_image || product.image_url || variant.image_url,
+      image_url: variant.image_url || product.display_image || product.image_url,
       selectedVariant: undefined,
       display_image: undefined,
       quantity: 1
@@ -113,7 +120,11 @@ export function StoreProvider({ children }) {
         cart.map((x) =>
           x.id === product.id && x.variant_id === variant.id
             ? {
-                ...x, quantity: Math.min(x.quantity + 1, variant.stock)
+                ...x,
+                image_url: cartItem.image_url,
+                variant_color: cartItem.variant_color,
+                variant_name: cartItem.variant_name,
+                quantity: Math.min(x.quantity + 1, variant.stock)
               }
             : x
         )

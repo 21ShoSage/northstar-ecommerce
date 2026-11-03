@@ -49,9 +49,9 @@ function Header() {
   const toast = useToast();
   return <header className="site-header">
     <div className="nav-wrap">
-      <Link to="/" className="brand" onClick={() => setOpen(false)}><span className="brand-mark">N</span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link>
+      <Link to="/" className="brand" onClick={() => setOpen(false)}><span className="brand-mark"><img className="brand-logo brand-logo-light" src="/images/Logo%20Lite.jpg" alt="Logo Lite"/><img className="brand-logo brand-logo-dark" src="/images/Mini%20Logo.jpg" alt="Mini Logo"/></span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link>
       <nav className={open ? 'nav-links open' : 'nav-links'}>
-        <NavLink to="/shop" onClick={() => setOpen(false)}>Shop all</NavLink>
+        <NavLink to="/shop" onClick={() => setOpen(false)}>Shop</NavLink>
         {user?.role === 'admin' && <NavLink to="/admin" onClick={() => setOpen(false)}>Admin</NavLink>}
         {user && <NavLink to="/profile" onClick={() => setOpen(false)}>My Profile</NavLink>}
         {user && user.role !== 'admin' && <NavLink to="/orders" onClick={() => setOpen(false)}>My orders</NavLink>}
@@ -93,23 +93,10 @@ function Header() {
   </header>;
 }
 function Footer() {
-  return <footer className="footer"><div className="footer-inner"><Link to="/" className="brand footer-brand"><span className="brand-mark">N</span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link><p>Thoughtful finds. Everyday favorites.</p><span>© {new Date().getFullYear()} Northstar Store</span></div></footer>;
+  return <footer className="footer"><div className="footer-inner"><Link to="/" className="brand footer-brand"><span className="brand-mark"><img className="brand-logo brand-logo-light" src="/images/Logo%20Lite.jpg" alt="Logo Lite"/><img className="brand-logo brand-logo-dark" src="/images/Mini%20Logo.jpg" alt="Mini Logo"/></span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link><p>Thoughtful finds. Everyday favorites.</p><span>© {new Date().getFullYear()} Northstar Store</span></div></footer>;
 }
 function ProductCard({ product, index = 0 }) {
-  const { user, addToCart } = useStore();
-  const navigate = useNavigate();
-  const toast = useToast();
-  const [added, setAdded] = useState(false);
   const variant = product.variants?.[0];
-  const addToBag = () => {
-    if (!user) { toast.info('Please log in first to add a product to your bag.'); navigate('/login'); return; }
-    // Pass the image shown on this card so the bag shows the same picture.
-    const result = addToCart({ ...product, selectedVariant: variant, display_image: product.image_url });
-    if (result === 'max') { toast.info(`You already have all available ${product.name} in your bag.`); return; }
-    toast.success(result === 'increased' ? `${product.name} quantity increased in your bag.` : `${product.name} added to your bag.`);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1000);
-  };
   const displayPrice = variant?.price ?? product.price;
   const displayStock = product.variants?.length
     ? product.variants.reduce((sum, item) => sum + item.stock, 0)
@@ -127,7 +114,7 @@ function ProductCard({ product, index = 0 }) {
 />
       <span className="product-category">{product.category}</span>
     </Link>
-    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span>{user?.role !== 'admin' && <button className={`add-button ${added ? 'added' : ''}`} aria-label={`Add ${product.name} to bag`} disabled={displayStock < 1} onClick={addToBag}>{added ? <CircleCheck size={17}/> : <Plus size={17}/>}</button>}</div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span></div>
+    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span></div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span></div>
   </article>;
 }
 function Home() {
@@ -151,7 +138,7 @@ function Shop() {
   }, []);
   useEffect(() => { setLoading(true); api(`/products?q=${encodeURIComponent(q)}${category !== 'All' ? `&category=${encodeURIComponent(category)}` : ''}`).then(d => { setProducts(d.products); setError(''); }).catch(e => setError(e.message)).finally(() => setLoading(false)); }, [q, category]);
   const categories = ['All', ...categoryList];
-  return <main className="page-shell"><div className="page-heading"><span className="eyebrow">THE COLLECTION</span><h1>Shop <em>all.</em></h1><p>Useful things, considered carefully.</p></div><div className="shop-tools"><label className="search-box"><Search size={18}/><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search products..." aria-label="Search products"/></label><div className="category-pills">{categories.map(c => <button key={c} className={category === c ? 'pill active' : 'pill'} onClick={() => setCategory(c)}>{c}</button>)}</div></div><Notice message={error}/>{loading ? <div className="loading">Finding good things…</div> : products.length ? <div className="product-grid shop-grid">{products.map((p,i) => <ProductCard key={p.id} product={p} index={i}/>)}</div> : <div className="empty-state"><ShoppingBag size={28}/><h3>Nothing found just yet.</h3><p>Try another search or choose a different category.</p><button className="button button-dark" onClick={() => { setQ(''); setCategory('All'); }}>Clear filters</button></div>}</main>;
+  return <main className="page-shell"><div className="page-heading"><span className="eyebrow">THE COLLECTION</span><h1>Shop</h1><p>Useful things, considered carefully.</p></div><div className="shop-tools"><label className="search-box"><Search size={18}/><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search products..." aria-label="Search products"/></label><div className="category-pills">{categories.map(c => <button key={c} className={category === c ? 'pill active' : 'pill'} onClick={() => setCategory(c)}>{c}</button>)}</div></div><Notice message={error}/>{loading ? <div className="loading">Finding good things…</div> : products.length ? <div className="product-grid shop-grid">{products.map((p,i) => <ProductCard key={p.id} product={p} index={i}/>)}</div> : <div className="empty-state"><ShoppingBag size={28}/><h3>Nothing found just yet.</h3><p>Try another search or choose a different category.</p><button className="button button-dark" onClick={() => { setQ(''); setCategory('All'); }}>Clear filters</button></div>}</main>;
 }
 
 function ProductDetail() {
@@ -161,12 +148,14 @@ function ProductDetail() {
   const [error, setError] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedSize, setSelectedSize] = useState(null);
+  const [showMainImage, setShowMainImage] = useState(false);
   const { user, addToCart } = useStore();
   const toast = useToast();
 
   useEffect(() => {
     setSelectedColor(null);
     setSelectedSize(null);
+    setShowMainImage(false);
     api(`/products/${id}`)
       .then((d) => setProduct(d.product))
       .catch((e) => setError(e.message));
@@ -200,9 +189,6 @@ function ProductDetail() {
   const activeSize = selectedSize
     || activeColorVariants.find((variant) => Number(variant.stock) > 0)?.name
     || defaultSize;
-  const colorVariant = activeColorVariants.find((variant) => Number(variant.stock) > 0)
-    || activeColorVariants[0]
-    || firstAvailable;
   const selectedVariant = variants.find((variant) =>
     (variant.color || 'Standard') === activeColor
     && (variant.name || 'Standard') === activeSize
@@ -215,9 +201,11 @@ function ProductDetail() {
     && (variant.name || 'Standard') === size
     && Number(variant.stock) > 0
   );
-  const displayedImage = selectedColor === null
+  const totalStock = variants.reduce((total, variant) => total + Number(variant.stock || 0), 0);
+  const needsVariantSelection = showMainImage && variants.length > 1;
+  const displayedImage = showMainImage
     ? product.image_url
-    : colorVariant.image_url || product.image_url;
+    : selectedVariant.image_url || product.image_url;
 
   return (
     <main className="page-shell">
@@ -247,8 +235,11 @@ function ProductDetail() {
                     if (image.id === 'main') {
                       setSelectedColor(null);
                       setSelectedSize(null);
+                      setShowMainImage(true);
                     } else {
                       setSelectedColor(image.color || 'Standard');
+                      setSelectedSize(image.name || null);
+                      setShowMainImage(false);
                     }
                   }}
                   aria-label={image.id === 'main' ? 'View main product image' : `View ${image.color || image.name} image`}
@@ -264,7 +255,8 @@ function ProductDetail() {
           <h1>{product.name}</h1>
           <span className="detail-price">{money(selectedVariant.price)}</span>
           <p>{product.description}</p>
-          {colors.length > 1 && <div className="variant-group"><span className="variant-label">Color</span><div className="variant-buttons">{colors.map((color) => <button type="button" key={color} className={`variant-button ${activeColor === color ? 'active' : ''}`} disabled={!isColorAvailable(color)} onClick={() => {
+          {colors.some((color) => color.toLowerCase() !== 'standard') && <div className="variant-group"><span className="variant-label">Color</span><div className="variant-buttons">{colors.map((color) => <button type="button" key={color} className={`variant-button ${!showMainImage && activeColor === color ? 'active' : ''}`} disabled={!isColorAvailable(color)} onClick={() => {
+            setShowMainImage(false);
             setSelectedColor(color);
             if (!variants.some((variant) =>
               (variant.color || 'Standard') === color
@@ -276,27 +268,29 @@ function ProductDetail() {
               )?.name || 'Standard');
             }
           }}>{color}</button>)}</div></div>}
-          {sizes.length > 1 && <div className="variant-group"><span className="variant-label">Size</span><div className="variant-buttons">{sizes.map((size) => <button type="button" key={size} className={`variant-button ${activeSize === size ? 'active' : ''}`} disabled={!isSizeAvailable(size)} onClick={() => setSelectedSize(size)}>{size}</button>)}</div></div>}
+          {sizes.length > 1 && <div className="variant-group"><span className="variant-label">Size</span><div className="variant-buttons">{sizes.map((size) => <button type="button" key={size} className={`variant-button ${!showMainImage && activeSize === size ? 'active' : ''}`} disabled={!isSizeAvailable(size)} onClick={() => { setSelectedSize(size); setShowMainImage(false); }}>{size}</button>)}</div></div>}
 
           <p className="stock-note">
-            {selectedVariant.stock > 0
-              ? `${selectedVariant.stock} available`
+            {showMainImage
+              ? totalStock > 0 ? `Overall stock: ${totalStock}` : 'Currently sold out'
+              : selectedVariant.stock > 0 ? `${selectedVariant.stock} available`
               : 'Currently sold out'}
           </p>
+          {needsVariantSelection && <p className="stock-note">Select a color or size to add a specific variant to your bag.</p>}
 
           {user?.role === 'admin' ? (
             <p className="stock-note">Administrator view: admins manage the catalog and can't add items to a bag.</p>
           ) : (
             <button
               className="button button-dark wide-button"
-              disabled={selectedVariant.stock < 1}
+              disabled={selectedVariant.stock < 1 || needsVariantSelection}
               onClick={() => {
                 if (!user) {
                   toast.info('Please log in first to add a product to your bag.');
                   navigate('/login');
                   return;
                 }
-                const result = addToCart({ ...product, selectedVariant, display_image: displayedImage });
+                const result = addToCart({ ...product, selectedVariant, display_image: imageSrc(selectedVariant.image_url || product.image_url) });
                 if (result === 'max') {
                   toast.info(`You already have all available ${product.name} in your bag.`);
                   return;
@@ -354,7 +348,7 @@ function Cart() {
     e.currentTarget.onerror = null;
     e.currentTarget.src = fallbackImage;
   }}
-/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{item.variant_name && <small>{item.variant_name}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => decreaseQuantity(item)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => confirmRemove(item)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div>{shipping > 0 && <p className="summary-note">Free shipping on orders over PHP 5,000.</p>}<div className="summary-total"><span>Estimated total</span><strong>{money(total + shipping)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
+/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{(item.variant_color && item.variant_color.toLowerCase() !== 'standard' || item.variant_name && item.variant_name.toLowerCase() !== 'standard') && <small>{[item.variant_color && item.variant_color.toLowerCase() !== 'standard' ? `Color: ${item.variant_color}` : '', item.variant_name && item.variant_name.toLowerCase() !== 'standard' ? `Size: ${item.variant_name}` : ''].filter(Boolean).join(' · ')}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => decreaseQuantity(item)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => confirmRemove(item)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div>{shipping > 0 && <p className="summary-note">Free shipping on orders over PHP 5,000.</p>}<div className="summary-total"><span>Estimated total</span><strong>{money(total + shipping)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
 }
 function Checkout() {
   const { cart, clearCart, user } = useStore(), navigate = useNavigate(), toast = useToast();
@@ -397,14 +391,14 @@ function Checkout() {
   }
   if (!user) return <main className="page-shell"><div className="empty-state"><UserRound size={30}/><h3>Sign in to check out</h3><p>Your orders will be saved to your account.</p><Link to="/login" className="button button-dark">Sign in or create account</Link></div></main>;
   if (!cart.length) return <main className="page-shell"><div className="empty-state"><h3>Your bag is empty.</h3><Link to="/shop" className="text-link">Return to shop →</Link></div></main>;
-  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">ALMOST YOURS</span><h1>Checkout <em>details.</em></h1></div><div className="checkout-layout"><form className="form-card" onSubmit={submit}><h2>Shipping information</h2><p className="muted">Your saved address is prefilled. You can change it for this order.</p>  <Notice message={error}/><label>Shipping address<select value={selectedAddress} onChange={(e) => { const value = e.target.value; setSelectedAddress(value); const saved = addresses.find((address) => String(address.id) === value); if (saved) setForm({ ...form, customer_name: saved.recipient_name, phone: saved.phone, shipping_address: saved.address_line }); else setForm({ ...form, customer_name: user.name, phone: user.phone || '', shipping_address: '', payment_method: form.payment_method }); }}><option value="new">Add a new address</option>{addresses.map((address) => <option key={address.id} value={address.id}>{address.label} — {address.address_line}</option>)}</select></label><label>Recipient name<input name="customer_name" required minLength="2" value={form.customer_name} onChange={change} placeholder="Recipient name"/></label><label>Phone number<input name="phone" type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" required value={form.phone} onChange={change} placeholder="11-digit phone number"/></label><label>Complete shipping address<textarea name="shipping_address" required minLength="8" rows="4" value={form.shipping_address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label><label>Payment method<select name="payment_method" value={form.payment_method} onChange={change}><option>Cash on delivery</option><option>GCash (Demo)</option><option>Credit or debit card (Demo)</option></select></label><p className="summary-note">Demo payment selection only. No real payment is processed.</p><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Placing order…' : 'Place order'} <ArrowUpRight size={17}/></button></form><aside className="order-summary"><span className="eyebrow">IN YOUR BAG</span><h2>Order summary</h2>{cart.map(i => <div className="summary-product" key={`${i.id}-${i.variant_id || 'standard'}`}><img
+  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">ALMOST YOURS</span><h1>Checkout <em>details.</em></h1></div><div className="checkout-layout"><form className="form-card" onSubmit={submit}><h2>Shipping information</h2><p className="muted">Your saved address is prefilled. You can change it for this order.</p>  <Notice message={error}/>{addresses.length > 0 && <label className="checkout-address-label">Shipping address<select value={selectedAddress} onChange={(e) => { const value = e.target.value; setSelectedAddress(value); const saved = addresses.find((address) => String(address.id) === value); if (saved) setForm({ ...form, customer_name: saved.recipient_name, phone: saved.phone, shipping_address: saved.address_line }); else setForm({ ...form, customer_name: user.name, phone: user.phone || '', shipping_address: '', payment_method: form.payment_method }); }}><option value="new">Add New Address:</option>{addresses.map((address) => <option key={address.id} value={address.id}>{address.label} — {address.address_line}</option>)}</select></label>}{(!addresses.length || selectedAddress === 'new') && <label className="checkout-address-label">{addresses.length === 0 ? 'Add New Address:' : 'Complete Shipping Address'}<textarea name="shipping_address" required minLength="8" rows="4" value={form.shipping_address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label>}<label>Recipient name<input name="customer_name" required minLength="2" value={form.customer_name} onChange={change} placeholder="Recipient name"/></label><label>Phone number<input name="phone" type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" required value={form.phone} onChange={change} placeholder="11-digit phone number"/></label><label>Payment method<select name="payment_method" value={form.payment_method} onChange={change}><option>Cash on delivery</option><option>GCash (Demo)</option><option>Credit or debit card (Demo)</option></select></label><p className="summary-note">Demo payment selection only. No real payment is processed.</p><button className="button button-dark wide-button" disabled={busy}>{busy ? 'Placing order…' : 'Place order'} <ArrowUpRight size={17}/></button></form><aside className="order-summary"><span className="eyebrow">IN YOUR BAG</span><h2>Order summary</h2>{cart.map(i => <div className="summary-product" key={`${i.id}-${i.variant_id || 'standard'}`}><img
   src={imageSrc(i.image_url)}
   alt={i.name}
   onError={(e) => {
     e.currentTarget.onerror = null;
     e.currentTarget.src = fallbackImage;
   }}
-/> <div><b>{i.name}</b><small>{i.variant_name} · Qty {i.quantity}</small></div><span>{money(i.price * i.quantity)}</span></div>)}<div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div><div className="summary-total"><span>Total</span><strong>{money(total + shipping)}</strong></div></aside></div></main>;
+/> <div><b>{i.name}</b><small>{[i.variant_color && i.variant_color.toLowerCase() !== 'standard' ? `Color: ${i.variant_color}` : '', i.variant_name && i.variant_name.toLowerCase() !== 'standard' ? `Size: ${i.variant_name}` : '', `Qty ${i.quantity}`].filter(Boolean).join(' · ')}</small></div><span>{money(i.price * i.quantity)}</span></div>)}<div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div><div className="summary-total"><span>Total</span><strong>{money(total + shipping)}</strong></div></aside></div></main>;
 }
 function PasswordInput({ name, value, onChange, placeholder, error }) {
   const [visible, setVisible] = useState(false);
@@ -467,7 +461,7 @@ function AddCategory({ onAdded }) {
     try {
       const d = await api('/categories', { method: 'POST', body: JSON.stringify({ name: clean }) });
       toast.success(`Category "${d.category.name}" added.`);
-      onAdded?.(d.category.name);
+      onAdded?.(d.category);
       close();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
@@ -484,22 +478,94 @@ function Admin() {
   const [form, setForm] = useState({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, colors: [], sizes: ['Standard'], variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] });
   const [colorDraft, setColorDraft] = useState(''), [sizeDraft, setSizeDraft] = useState('');
   const [categoryList, setCategoryList] = useState(['Accessories', 'Electronics', 'Home', 'Fashion', 'General']);
-  const categoryAdded = (name, select) => {
+  const [categoryRecords, setCategoryRecords] = useState([]);
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const categoryAdded = (category, select) => {
+    const name = typeof category === 'string' ? category : category.name;
     setCategoryList(list => list.includes(name) ? list : [...list, name]);
+    if (typeof category !== 'string') {
+      setCategoryRecords(list => list.some(item => item.id === category.id) ? list : [...list, category]);
+    }
     if (select) setForm(f => ({ ...f, category: name }));
   };
   const { user } = useStore();
-  async function refresh() { const [p, o, a, c] = await Promise.all([api('/products'), api('/orders'), api('/orders/admin/activity'), api('/categories').catch(() => null)]); setProducts(p.products); setOrders(o.orders); setActivity(a.activity); if (c) setCategoryList(c.categories.map(x => x.name)); }
+  async function refresh() { const [p, o, a, c] = await Promise.all([api('/products'), api('/orders'), api('/orders/admin/activity'), api('/categories').catch(() => null)]); setProducts(p.products); setOrders(o.orders); setActivity(a.activity); if (c) { setCategoryRecords(c.categories); setCategoryList(c.categories.map(x => x.name)); } }
   useEffect(() => { if (user?.role === 'admin') refresh().catch(e => toast.error(e.message)); }, [user]);
-  const reset = () => { setEditing(null); setColorDraft(''); setSizeDraft(''); setForm({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, colors: [], sizes: ['Standard'], variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] }); };
+  const reset = () => { setEditing(null); setColorDraft(''); setSizeDraft(''); setForm({ name: '', description: '', category: categoryList.includes('Accessories') ? 'Accessories' : categoryList[0] || '', image_url: '', imageFile: null, colors: [], sizes: ['Standard'], variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] }); };
   const edit = (p) => { const variants = (p.variants || []).map(({ color, name, sku, price, stock, image_url }) => ({ color: color || '', name: name || 'Standard', sku, price: String(price), stock: String(stock), image_url: image_url || '', imageFile: null })); setEditing(p.id); setColorDraft(''); setSizeDraft(''); setForm({ name: p.name, description: p.description, category: p.category, image_url: p.image_url || '', imageFile: null, colors: [...new Set(variants.map(v => v.color).filter(Boolean))], sizes: [...new Set(variants.map(v => v.name).filter(Boolean))], variants }); setTab('add-product'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   async function save(e) { e.preventDefault(); const colors = form.colors.map(c => c.trim()).filter(Boolean), sizes = form.sizes.map(s => s.trim()).filter(Boolean); if (!colors.length || !sizes.length) { toast.error('Configure at least one color and one size before saving.'); return; } if (form.variants.some(v => !colors.includes(v.color) || !sizes.includes(v.name))) { toast.error('Every variant must use a configured color and size.'); return; } const body = new FormData(); body.append('name', form.name); body.append('description', form.description); body.append('category', form.category); body.append('image_url', form.imageFile ? '' : form.image_url); body.append('variants', JSON.stringify(form.variants.map(v => ({ color: v.color.trim(), name: v.name.trim(), sku: generateVariantSku(form.name, v.color, v.name), price: Number(v.price), stock: Number(v.stock), image_url: v.image_url })))); form.variants.forEach((v, i) => { if (v.imageFile) body.append(`variant_image_${i}`, v.imageFile); }); if (form.imageFile) body.append('product_image', form.imageFile); try { await api(editing ? `/products/${editing}` : '/products', { method: editing ? 'PUT' : 'POST', body }); toast.success(editing ? 'Product updated.' : 'Product created.'); reset(); setTab('products'); await refresh(); } catch (e) { toast.error(e.message); } }
   async function remove(p) { const ok = await toast.confirm({ title: 'Delete product?', message: `Delete "${p.name}"? This can't be undone.`, confirmLabel: 'Delete', danger: true }); if (!ok) return; try { await api(`/products/${p.id}`, { method: 'DELETE' }); toast.success('Product deleted.'); await refresh(); } catch (e) { toast.error(e.message); } }
+  async function saveCategory(category) {
+    const name = categoryDraft.trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > 80) { toast.error('Category name must be 2 to 80 characters.'); return; }
+    try {
+      const { category: updated } = await api(`/categories/${category.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name })
+      });
+      setCategoryRecords(list => list.map(item => item.id === updated.id ? updated : item));
+      setCategoryList(list => list.map(item => item === category.name ? updated.name : item));
+      setProducts(list => list.map(product => product.category === category.name ? { ...product, category: updated.name } : product));
+      setForm(current => current.category === category.name ? { ...current, category: updated.name } : current);
+      setEditingCategoryId(null);
+      setCategoryDraft('');
+      toast.success('Category updated.');
+    } catch (e) { toast.error(e.message); }
+  }
+  async function removeCategory(category) {
+    const ok = await toast.confirm({
+      title: 'Delete category?',
+      message: category.product_count
+        ? `Delete "${category.name}"? Its ${category.product_count} product${category.product_count === 1 ? '' : 's'} will be moved to another category.`
+        : `Delete "${category.name}"? This can't be undone.`,
+      confirmLabel: 'Delete',
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      const result = await api(`/categories/${category.id}`, { method: 'DELETE' });
+      setCategoryRecords(list => {
+        const remaining = list.filter(item => item.id !== category.id);
+        if (result.fallback_category && !remaining.some(item => item.id === result.fallback_category.id)) {
+          remaining.push({ ...result.fallback_category, product_count: result.moved_products });
+        } else if (result.fallback_category) {
+          return remaining.map(item => item.id === result.fallback_category.id
+            ? { ...item, product_count: item.product_count + result.moved_products }
+            : item);
+        }
+        return remaining;
+      });
+      setCategoryList(list => {
+        const remaining = list.filter(name => name !== category.name);
+        if (result.fallback_category && !remaining.includes(result.fallback_category.name)) {
+          remaining.push(result.fallback_category.name);
+        }
+        return remaining;
+      });
+      if (result.fallback_category) {
+        setProducts(list => list.map(product => product.category === category.name
+          ? { ...product, category: result.fallback_category.name }
+          : product));
+        setForm(current => current.category === category.name
+          ? { ...current, category: result.fallback_category.name }
+          : current);
+      } else {
+        setProducts(list => list.filter(product => product.category !== category.name));
+        setForm(current => current.category === category.name
+          ? { ...current, category: '' }
+          : current);
+      }
+      toast.success(result.moved_products
+        ? `Category deleted. Products moved to ${result.fallback_category.name}.`
+        : 'Category deleted.');
+    } catch (e) { toast.error(e.message); }
+  }
   async function updateStatus(id, status) { try { await api(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); toast.success(`Order #${id} marked as ${statusLabel(status)}.`); await refresh(); } catch (e) { toast.error(e.message); } }
   const updateVariant = (index, key, value) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, [key]: value } : v) });
   if (user?.role !== 'admin') return <main className="page-shell"><div className="empty-state"><ShieldCheck size={32}/><h3>Administrator access only.</h3><p>Sign in with an administrator account to manage the store.</p><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
   const productForm = <form className="form-card admin-form" onSubmit={save}><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><div className="category-selector-row"><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select></label><div className="category-add-row"><AddCategory onAdded={name => categoryAdded(name, true)}/></div></div><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Configure at least one color and size, then choose them from each variant dropdown.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: form.colors[0] || '', name: form.sizes[0] || '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div><div className="variant-config"><div className="variant-config-row"><label>New color<input value={colorDraft} onChange={e => setColorDraft(e.target.value)} placeholder="e.g. White"/></label><button type="button" className="button button-outline" onClick={() => { const value = colorDraft.trim(); if (value && !form.colors.includes(value)) setForm({ ...form, colors: [...form.colors, value], variants: form.variants.map(v => v.color ? v : { ...v, color: value }) }); setColorDraft(''); }}>Add color</button></div><div className="variant-config-row"><label>New size<input value={sizeDraft} onChange={e => setSizeDraft(e.target.value)} placeholder="e.g. Medium"/></label><button type="button" className="button button-outline" onClick={() => { const value = sizeDraft.trim(); if (value && !form.sizes.includes(value)) setForm({ ...form, sizes: [...form.sizes, value], variants: form.variants.map(v => v.name ? v : { ...v, name: value }) }); setSizeDraft(''); }}>Add size</button></div><div className="variant-options"><div><span className="muted">Colors</span>{form.colors.map(color => <button type="button" className="option-chip" key={color} onClick={() => form.colors.length > 1 && setForm({ ...form, colors: form.colors.filter(item => item !== color), variants: form.variants.map(v => v.color === color ? { ...v, color: '' } : v) })}>{color} ×</button>)}</div><div><span className="muted">Sizes</span>{form.sizes.map(size => <button type="button" className="option-chip" key={size} onClick={() => form.sizes.length > 1 && setForm({ ...form, sizes: form.sizes.filter(item => item !== size), variants: form.variants.map(v => v.name === size ? { ...v, name: '' } : v) })}>{size} ×</button>)}</div></div></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<select required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)}><option value="" disabled>Select color</option>{form.colors.map(color => <option key={color} value={color}>{color}</option>)}</select></label><label>Name / size<select required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)}><option value="" disabled>Select size</option>{form.sizes.map(size => <option key={size} value={size}>{size}</option>)}</select></label><label>SKU<input readOnly value={generateVariantSku(form.name, v.color, v.name)} placeholder="Generated automatically"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
-  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>COMPLETED ORDERS</span><b>{orders.filter(o => o.status === 'Delivered').length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div><div><span>LOW STOCK</span><b>{products.filter(p => p.low_stock).length}</b></div></div><div className="admin-tabs"><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard size={16}/> Dashboard</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div>{tab === 'dashboard' && <div className="admin-dashboard"><section className="admin-product-list"><h2>Low-stock products <span>{products.filter(p => p.low_stock).length} items</span></h2>{products.filter(p => p.low_stock).length ? products.filter(p => p.low_stock).map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.stock} remaining · threshold {p.low_stock_threshold}</small></div><strong className="status status-pending">Low stock</strong></div>) : <p className="muted">All products have healthy stock levels.</p>}</section><section className="admin-product-list"><h2>Recent activity <span>{activity.length} events</span></h2>{activity.length ? activity.slice(0, 10).map(item => <div className="activity-row" key={item.id}><div><b>{item.action}</b><small>{item.details} · {item.admin_name}</small></div><time>{new Date(item.created_at).toLocaleString()}</time></div>) : <p className="muted">No admin activity recorded yet.</p>}</section></div>}{tab === 'products' && <div className="admin-product-list"><div className="admin-list-head"><h2>Product catalog <span>{products.length} items</span></h2><AddCategory onAdded={name => categoryAdded(name, false)}/></div>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button className="row-edit" title="Edit product" onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button className="row-delete" title="Delete product" onClick={() => remove(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-add"><h2>{editing ? 'Edit product' : 'Add a product'}</h2>{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>{orderFilter === 'All' ? 'All orders' : `${statusLabel(orderFilter)} orders`} <span>{orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length} orders</span></h2><div className="category-pills order-filters">{['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(f => <button key={f} className={orderFilter === f ? 'pill active' : 'pill'} onClick={() => setOrderFilter(f)}>{statusLabel(f)} ({f === 'All' ? orders.length : orders.filter(o => o.status === f).length})</button>)}</div>{!orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length ? <div className="empty-state"><p>{orderFilter === 'All' ? 'No orders have been placed yet.' : `No ${statusLabel(orderFilter).toLowerCase()} orders yet.`}</p></div> : orders.filter(o => orderFilter === 'All' || o.status === orderFilter).map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{statusLabel(o.status)}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(st => <option key={st} value={st}>{statusLabel(st)}</option>)}</select></label></div></article>)}</div>}</main>;
+  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>COMPLETED ORDERS</span><b>{orders.filter(o => o.status === 'Delivered').length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div><div><span>LOW STOCK</span><b>{products.filter(p => p.low_stock).length}</b></div></div><div className="admin-tabs"><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard size={16}/> Dashboard</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'categories' ? 'active' : ''} onClick={() => setTab('categories')}><Tag size={16}/> Categories</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div>{tab === 'dashboard' && <div className="admin-dashboard"><section className="admin-product-list"><h2>Low-stock products <span>{products.filter(p => p.low_stock).length} items</span></h2>{products.filter(p => p.low_stock).length ? products.filter(p => p.low_stock).map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.stock} remaining · threshold {p.low_stock_threshold}</small></div><strong className="status status-pending">Low stock</strong></div>) : <p className="muted">All products have healthy stock levels.</p>}</section><section className="admin-product-list"><h2>Recent activity <span>{activity.length} events</span></h2>{activity.length ? activity.slice(0, 10).map(item => <div className="activity-row" key={item.id}><div><b>{item.action}</b><small>{item.details} · {item.admin_name}</small></div><time>{new Date(item.created_at).toLocaleString()}</time></div>) : <p className="muted">No admin activity recorded yet.</p>}</section></div>}{tab === 'products' && <div className="admin-product-list"><div className="admin-list-head"><h2>Product catalog</h2><AddCategory onAdded={name => categoryAdded(name, false)}/></div>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button className="row-edit" title="Edit product" onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button className="row-delete" title="Delete product" onClick={() => remove(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'categories' && <div className="admin-product-list admin-categories"><div className="admin-list-head"><div><h2>Categories</h2><p className="muted">Edit category names or remove categories from your store.</p></div><AddCategory onAdded={category => categoryAdded(category, false)}/></div>{categoryRecords.length ? categoryRecords.map(category => <div className="admin-category-row" key={category.id}><div className="admin-category-details"><b>{category.name}</b><small>{category.product_count} product{category.product_count === 1 ? '' : 's'}</small></div>{editingCategoryId === category.id ? <div className="admin-category-edit"><input autoFocus aria-label={`Rename ${category.name}`} maxLength={80} value={categoryDraft} onChange={e => setCategoryDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveCategory(category); } if (e.key === 'Escape') { setEditingCategoryId(null); setCategoryDraft(''); } }}/><button type="button" className="button button-dark" onClick={() => saveCategory(category)}>Save</button><button type="button" className="button button-outline" onClick={() => { setEditingCategoryId(null); setCategoryDraft(''); }}>Cancel</button></div> : <div className="admin-row-actions"><button className="row-edit" title={`Edit ${category.name}`} aria-label={`Edit ${category.name}`} onClick={() => { setEditingCategoryId(category.id); setCategoryDraft(category.name); }}><Pencil size={16}/></button><button className="row-delete" title={`Delete ${category.name}`} aria-label={`Delete ${category.name}`} onClick={() => removeCategory(category)}><Trash2 size={16}/></button></div>}</div>) : <div className="empty-state"><p>No categories yet. Add one to organize your products.</p></div>}</div>}{tab === 'add-product' && <div className="admin-add"><h2>{editing ? 'Edit product' : 'Add a product'}</h2>{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>{orderFilter === 'All' ? 'All orders' : `${statusLabel(orderFilter)} orders`} <span>{orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length} orders</span></h2><div className="category-pills order-filters">{['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(f => <button key={f} className={orderFilter === f ? 'pill active' : 'pill'} onClick={() => setOrderFilter(f)}>{statusLabel(f)} ({f === 'All' ? orders.length : orders.filter(o => o.status === f).length})</button>)}</div>{!orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length ? <div className="empty-state"><p>{orderFilter === 'All' ? 'No orders have been placed yet.' : `No ${statusLabel(orderFilter).toLowerCase()} orders yet.`}</p></div> : orders.filter(o => orderFilter === 'All' || o.status === orderFilter).map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{statusLabel(o.status)}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(st => <option key={st} value={st}>{statusLabel(st)}</option>)}</select></label></div></article>)}</div>}</main>;
 }
 function Profile() {
   const { user, updateUser } = useStore();
@@ -749,11 +815,11 @@ function Profile() {
           <p className="muted">Choose a JPG, PNG, or WebP image up to 2 MB.</p>
 
           <form onSubmit={uploadPicture}>
-            <label>
-              <Camera size={16} /> Choose image
+            <label aria-label="Choose profile image">
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                aria-label="Choose profile image"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   setPicture(file);

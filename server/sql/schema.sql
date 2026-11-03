@@ -213,9 +213,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name_lower
 ON categories (LOWER(name));
 
 INSERT INTO categories (name)
-SELECT name FROM (
-  SELECT UNNEST(ARRAY['Accessories', 'Electronics', 'Home', 'Fashion', 'General']) AS name
-  UNION
-  SELECT DISTINCT category FROM products WHERE category <> ''
-) c
+SELECT DISTINCT category FROM products WHERE category <> ''
 ON CONFLICT DO NOTHING;

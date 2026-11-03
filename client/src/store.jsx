@@ -1,12 +1,29 @@
-
 import React, {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState
 } from 'react';
 
 const StoreContext = createContext(null);
+
+// Each account gets its own cart, saved under its own key.
+// (Fix: the cart used to be saved under one shared key, so a different
+// account logging in on the same browser inherited the previous cart.)
+const cartKey = (user) => (user?.id ? `northstar_cart_${user.id}` : null);
+
+const readCart = (key) => {
+  if (!key) return [];
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+// Identifies one cart line: the same product in a different variant is a different line.
+export const lineKey = (item) => `${item.id}-${item.variant_id ?? 'standard'}`;
 
 export function StoreProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -19,15 +36,12 @@ export function StoreProvider({ children }) {
     }
   });
 
-  const [cart, setCart] = useState(() => {
-    try {
-      return JSON.parse(
-        localStorage.getItem('northstar_cart') || '[]'
-      );
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState(() => readCart(cartKey(user)));
+
+  // Remove the old shared cart from previous versions so it can't leak to another account.
+  useEffect(() => {
+    localStorage.removeItem('northstar_cart');
+  }, []);
 
   const login = (data) => {
     sessionStorage.setItem('northstar_token', data.token);
@@ -37,6 +51,7 @@ export function StoreProvider({ children }) {
     );
 
     setUser(data.user);
+    setCart(readCart(cartKey(data.user)));
   };
 
   const updateUser = (updatedUser) => {
@@ -62,12 +77,15 @@ export function StoreProvider({ children }) {
     localStorage.removeItem('northstar_token');
     localStorage.removeItem('northstar_user');
 
+    // The cart stays saved for this account, but is cleared from the screen.
+    setCart([]);
     setUser(null);
   };
 
   const updateCart = (next) => {
     setCart(next);
-    localStorage.setItem('northstar_cart', JSON.stringify(next));
+    const key = cartKey(user);
+    if (key) localStorage.setItem(key, JSON.stringify(next));
   };
 
   const addToCart = (product) => {
@@ -80,13 +98,17 @@ export function StoreProvider({ children }) {
       variant_name: variant.name,
       price: Number(variant.price),
       stock: Number(variant.stock),
-      image_url: variant.image_url || product.image_url,
+      // Use the image the shopper was looking at, so the cart matches the shop page.
+      image_url: product.display_image || product.image_url || variant.image_url,
       selectedVariant: undefined,
+      display_image: undefined,
       quantity: 1
     };
     const existing = cart.find((x) => x.id === product.id && x.variant_id === variant.id);
 
     if (existing) {
+      // Already at the available stock: nothing to add.
+      if (existing.quantity >= variant.stock) return 'max';
       updateCart(
         cart.map((x) =>
           x.id === product.id && x.variant_id === variant.id
@@ -96,15 +118,16 @@ export function StoreProvider({ children }) {
             : x
         )
       );
-    } else {
-      updateCart([...cart, cartItem]);
+      return 'increased';
     }
+    updateCart([...cart, cartItem]);
+    return 'added';
   };
 
-  const setQuantity = (id, quantity) =>
+  const setQuantity = (item, quantity) =>
     updateCart(
       cart.map((x) =>
-        x.id === id
+        lineKey(x) === lineKey(item)
           ? {
               ...x,
               quantity: Math.max(
@@ -116,8 +139,8 @@ export function StoreProvider({ children }) {
       )
     );
 
-  const removeFromCart = (id) =>
-    updateCart(cart.filter((x) => x.id !== id));
+  const removeFromCart = (item) =>
+    updateCart(cart.filter((x) => lineKey(x) !== lineKey(item)));
 
   const clearCart = () => updateCart([]);
 

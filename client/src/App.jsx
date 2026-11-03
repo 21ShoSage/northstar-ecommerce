@@ -1,29 +1,22 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ShoppingBag, Search, ArrowUpRight, Plus, Minus, Trash2, Menu, X, PackageCheck, ShieldCheck, Leaf, Truck, LogOut, UserRound, LayoutDashboard, ClipboardList, Pencil, CircleCheck, AlertCircle, Camera, LockKeyhole, Save, Eye, EyeOff } from 'lucide-react';
+import { ShoppingBag, Search, ArrowUpRight, Plus, Minus, Trash2, Menu, X, PackageCheck, ShieldCheck, Leaf, Truck, LogOut, UserRound, LayoutDashboard, ClipboardList, Pencil, CircleCheck, AlertCircle, Camera, LockKeyhole, Save, Eye, EyeOff, Tag } from 'lucide-react';
 import { api, money } from './api.js';
-import { useStore } from './store.jsx';
+import { useStore, lineKey } from './store.jsx';
+import { useToast } from './toast.jsx';
 import { ThemeToggle } from './theme.jsx';
 
+// Shows messages as toasts (kept so existing <Notice message=... /> usages still work).
 function Notice({ message, type = 'error' }) {
-  const [visible, setVisible] = useState(Boolean(message));
+  const toast = useToast();
   useEffect(() => {
-    setVisible(Boolean(message));
-    if (!message) return undefined;
-    const timer = window.setTimeout(() => setVisible(false), 5000);
-    return () => window.clearTimeout(timer);
+    if (message) toast[type === 'success' ? 'success' : 'error'](message);
   }, [message]);
-
-  if (!message || !visible) return null;
-
-  return (
-    <div className={`notice notice-${type}`} role="alert">
-      {type === 'success' ? <CircleCheck size={18} /> : <AlertCircle size={18} />}
-      {message}
-    </div>
-  );
+  return null;
 }
 
+// "Delivered" is shown as "Completed" everywhere in the interface.
+const statusLabel = (status) => (status === 'Delivered' ? 'Completed' : status);
 
 const fallbackImage =
   'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=900&q=80';
@@ -53,6 +46,7 @@ function Header() {
   const { user, logout, cart } = useStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const toast = useToast();
   return <header className="site-header">
     <div className="nav-wrap">
       <Link to="/" className="brand" onClick={() => setOpen(false)}><span className="brand-mark">N</span><span>NORTHSTAR<span className="brand-sub">GOODS FOR EVERYDAY</span></span></Link>
@@ -66,15 +60,18 @@ function Header() {
 {user ? (
   <button
     className="nav-user"
-    onClick={() => {
-      const confirmed = window.confirm(
-        'Are you sure you want to sign out?'
-      );
+    onClick={async () => {
+      const confirmed = await toast.confirm({
+        title: 'Sign out?',
+        message: 'Are you sure you want to sign out?',
+        confirmLabel: 'Sign out'
+      });
 
       if (confirmed) {
         logout();
         setOpen(false);
         navigate('/login');
+        toast.success('You have been signed out.');
       }
     }}
   >
@@ -101,9 +98,18 @@ function Footer() {
 function ProductCard({ product, index = 0 }) {
   const { user, addToCart } = useStore();
   const navigate = useNavigate();
+  const toast = useToast();
   const [added, setAdded] = useState(false);
-  const [cartNotice, setCartNotice] = useState('');
   const variant = product.variants?.[0];
+  const addToBag = () => {
+    if (!user) { toast.info('Please log in first to add a product to your bag.'); navigate('/login'); return; }
+    // Pass the image shown on this card so the bag shows the same picture.
+    const result = addToCart({ ...product, selectedVariant: variant, display_image: product.image_url });
+    if (result === 'max') { toast.info(`You already have all available ${product.name} in your bag.`); return; }
+    toast.success(result === 'increased' ? `${product.name} quantity increased in your bag.` : `${product.name} added to your bag.`);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1000);
+  };
   const displayPrice = variant?.price ?? product.price;
   const displayStock = product.variants?.length
     ? product.variants.reduce((sum, item) => sum + item.stock, 0)
@@ -121,7 +127,7 @@ function ProductCard({ product, index = 0 }) {
 />
       <span className="product-category">{product.category}</span>
     </Link>
-    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span><button className={`add-button ${added ? 'added' : ''}`} aria-label={`Add ${product.name} to bag`} disabled={displayStock < 1} onClick={() => { if (!user) { window.alert('Please log in first to add a product to your bag.'); navigate('/login'); return; } addToCart({ ...product, selectedVariant: variant }); setAdded(true); setCartNotice('Product added to cart.'); setTimeout(() => setAdded(false), 1000); }}>{added ? <CircleCheck size={17}/> : <Plus size={17}/>}</button></div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span>{cartNotice && <Notice message={cartNotice} type="success" />}</div>
+    <div className="product-info"><Link to={`/product/${product.id}`} className="product-name">{product.name}</Link><div className="product-bottom"><span className="price">{money(displayPrice)}</span>{user?.role !== 'admin' && <button className={`add-button ${added ? 'added' : ''}`} aria-label={`Add ${product.name} to bag`} disabled={displayStock < 1} onClick={addToBag}>{added ? <CircleCheck size={17}/> : <Plus size={17}/>}</button>}</div><span className="stock-note">{displayStock > 0 ? `${displayStock} in stock` : 'Currently sold out'}</span></div>
   </article>;
 }
 function Home() {
@@ -136,8 +142,15 @@ function Home() {
 }
 function Shop() {
   const [products, setProducts] = useState([]), [q, setQ] = useState(''), [category, setCategory] = useState('All'), [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const [categoryList, setCategoryList] = useState([]);
+  // The category list comes from its own request so choosing one never hides the others.
+  useEffect(() => {
+    api('/categories')
+      .then(d => setCategoryList(d.categories.filter(c => c.product_count > 0).map(c => c.name)))
+      .catch(() => api('/products').then(d => setCategoryList([...new Set(d.products.map(p => p.category))])).catch(() => {}));
+  }, []);
   useEffect(() => { setLoading(true); api(`/products?q=${encodeURIComponent(q)}${category !== 'All' ? `&category=${encodeURIComponent(category)}` : ''}`).then(d => { setProducts(d.products); setError(''); }).catch(e => setError(e.message)).finally(() => setLoading(false)); }, [q, category]);
-  const categories = ['All', ...new Set(products.map(p => p.category))];
+  const categories = ['All', ...categoryList];
   return <main className="page-shell"><div className="page-heading"><span className="eyebrow">THE COLLECTION</span><h1>Shop <em>all.</em></h1><p>Useful things, considered carefully.</p></div><div className="shop-tools"><label className="search-box"><Search size={18}/><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search products..." aria-label="Search products"/></label><div className="category-pills">{categories.map(c => <button key={c} className={category === c ? 'pill active' : 'pill'} onClick={() => setCategory(c)}>{c}</button>)}</div></div><Notice message={error}/>{loading ? <div className="loading">Finding good things…</div> : products.length ? <div className="product-grid shop-grid">{products.map((p,i) => <ProductCard key={p.id} product={p} index={i}/>)}</div> : <div className="empty-state"><ShoppingBag size={28}/><h3>Nothing found just yet.</h3><p>Try another search or choose a different category.</p><button className="button button-dark" onClick={() => { setQ(''); setCategory('All'); }}>Clear filters</button></div>}</main>;
 }
 
@@ -147,8 +160,8 @@ function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [error, setError] = useState('');
   const [selectedVariantId, setSelectedVariantId] = useState(null);
-  const [cartNotice, setCartNotice] = useState('');
   const { user, addToCart } = useStore();
+  const toast = useToast();
 
   useEffect(() => {
     api(`/products/${id}`)
@@ -229,22 +242,29 @@ function ProductDetail() {
               : 'Currently sold out'}
           </p>
 
-          <button
-            className="button button-dark wide-button"
-            disabled={selectedVariant.stock < 1}
-            onClick={() => {
-              if (!user) {
-                window.alert('Please log in first to add a product to your bag.');
-                navigate('/login');
-                return;
-              }
-              addToCart({ ...product, selectedVariant });
-              setCartNotice('Product added to cart.');
-            }}
-          >
-            Add to bag <ShoppingBag size={17} />
-          </button>
-          <Notice message={cartNotice} type="success" />
+          {user?.role === 'admin' ? (
+            <p className="stock-note">Administrator view: admins manage the catalog and can't add items to a bag.</p>
+          ) : (
+            <button
+              className="button button-dark wide-button"
+              disabled={selectedVariant.stock < 1}
+              onClick={() => {
+                if (!user) {
+                  toast.info('Please log in first to add a product to your bag.');
+                  navigate('/login');
+                  return;
+                }
+                const result = addToCart({ ...product, selectedVariant, display_image: displayedImage });
+                if (result === 'max') {
+                  toast.info(`You already have all available ${product.name} in your bag.`);
+                  return;
+                }
+                toast.success(result === 'increased' ? `${product.name} quantity increased in your bag.` : `${product.name} added to your bag.`);
+              }}
+            >
+              Add to bag <ShoppingBag size={17} />
+            </button>
+          )}
 
           <div className="detail-assurances">
             <span><PackageCheck size={17} /> Carefully selected</span>
@@ -262,29 +282,40 @@ function useParamsSafe() {
 }
 function Cart() {
   const { cart, setQuantity, removeFromCart } = useStore();
+  const toast = useToast();
   const total = cart.reduce((s, x) => s + x.price * x.quantity, 0);
   const shipping = total > 5000 ? 0 : 100;
+  const confirmRemove = async (item) => {
+    const ok = await toast.confirm({
+      title: 'Remove item?',
+      message: `Are you sure you want to remove ${item.name}${item.variant_name ? ` (${item.variant_name})` : ''} from your bag?`,
+      confirmLabel: 'Remove',
+      danger: true
+    });
+    if (ok) {
+      removeFromCart(item);
+      toast.success('Item removed from your bag.');
+    }
+  };
   const decreaseQuantity = (item) => {
     if (item.quantity === 1) {
-      if (window.confirm('Want to remove the item?')) {
-        removeFromCart(item.id);
-      }
+      confirmRemove(item);
       return;
     }
 
-    setQuantity(item.id, item.quantity - 1);
+    setQuantity(item, item.quantity - 1);
   };
-  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR SELECTION</span><h1>Your <em>bag.</em></h1></div>{!cart.length ? <div className="empty-state"><ShoppingBag size={30}/><h3>Your bag is taking a little break.</h3><p>Find something useful for your everyday.</p><Link to="/shop" className="button button-dark">Explore the shop <ArrowUpRight size={17}/></Link></div> : <div className="cart-layout"><div className="cart-items">{cart.map(item => <div className="cart-item" key={`${item.id}-${item.variant_id || 'standard'}`}><img
+  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR SELECTION</span><h1>Your <em>bag.</em></h1></div>{!cart.length ? <div className="empty-state"><ShoppingBag size={30}/><h3>Your bag is taking a little break.</h3><p>Find something useful for your everyday.</p><Link to="/shop" className="button button-dark">Explore the shop <ArrowUpRight size={17}/></Link></div> : <div className="cart-layout"><div className="cart-items">{cart.map(item => <div className="cart-item" key={lineKey(item)}><img
   src={imageSrc(item.image_url)}
   alt={item.name}
   onError={(e) => {
     e.currentTarget.onerror = null;
     e.currentTarget.src = fallbackImage;
   }}
-/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{item.variant_name && <small>{item.variant_name}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => decreaseQuantity(item)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => removeFromCart(item.id)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div>{shipping > 0 && <p className="summary-note">Free shipping on orders over PHP 5,000.</p>}<div className="summary-total"><span>Estimated total</span><strong>{money(total + shipping)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
+/><div className="cart-item-info"><span className="eyebrow">{item.category}</span><h3>{item.name}</h3>{item.variant_name && <small>{item.variant_name}</small>}<span>{money(item.price)}</span><div className="quantity-control"><button onClick={() => decreaseQuantity(item)} aria-label="Decrease quantity"><Minus size={14}/></button><span>{item.quantity}</span><button onClick={() => setQuantity(item, item.quantity + 1)} disabled={item.quantity >= item.stock} aria-label="Increase quantity"><Plus size={14}/></button></div></div><div className="cart-item-end"><b>{money(item.price * item.quantity)}</b><button className="remove-button" onClick={() => confirmRemove(item)}><Trash2 size={15}/> Remove</button></div></div>)}</div><aside className="order-summary"><span className="eyebrow">THE TOTAL</span><h2>Order summary</h2><div className="summary-line"><span>Subtotal</span><span>{money(total)}</span></div><div className="summary-line"><span>Shipping</span><span>{shipping ? money(shipping) : 'Free'}</span></div>{shipping > 0 && <p className="summary-note">Free shipping on orders over PHP 5,000.</p>}<div className="summary-total"><span>Estimated total</span><strong>{money(total + shipping)}</strong></div><Link className="button button-dark wide-button" to="/checkout">Continue to checkout <ArrowUpRight size={17}/></Link><p className="summary-note">Checkout creates an order for this demo store. No payment is charged.</p></aside></div>}</main>;
 }
 function Checkout() {
-  const { cart, clearCart, user } = useStore(), navigate = useNavigate();
+  const { cart, clearCart, user } = useStore(), navigate = useNavigate(), toast = useToast();
   const [addresses, setAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState('');
   const [form, setForm] = useState({ customer_name: user?.name || '', shipping_address: '', phone: user?.phone || '', payment_method: 'Cash on delivery' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -313,7 +344,7 @@ function Checkout() {
     if (!cart.length) return setError('Your bag is empty.');
     setBusy(true);
     try {
-      const shouldSave = selectedAddress === 'new' && window.confirm('Would you like to save this address to your address book?');
+      const shouldSave = selectedAddress === 'new' && await toast.confirm({ title: 'Save this address?', message: 'Would you like to save this address to your address book?', confirmLabel: 'Save address', cancelLabel: 'No thanks' });
       const d = await api('/orders', { method: 'POST', body: JSON.stringify({ ...form, items: cart.map(x => ({ product_id: x.id, variant_id: x.variant_id, quantity: x.quantity })) }) });
       if (shouldSave) {
         await api('/auth/addresses', { method: 'POST', body: JSON.stringify({ label: 'Checkout address', recipient_name: form.customer_name, phone: form.phone, address_line: form.shipping_address }) });
@@ -339,7 +370,7 @@ function PasswordInput({ name, value, onChange, placeholder, error }) {
 }
 
 function AuthPage({ mode }) {
-  const isLogin = mode === 'login', { login } = useStore(), navigate = useNavigate();
+  const isLogin = mode === 'login', { login } = useStore(), navigate = useNavigate(), toast = useToast();
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '', confirmPassword: '', address: '', phone: '', birthday: '' }), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -351,7 +382,7 @@ function AuthPage({ mode }) {
   });
   const passwordError = !isLogin && form.password && !/^(?=.{8,}$)(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/.test(form.password) ? 'Use 8+ characters with an uppercase letter, number, and symbol.' : '';
   const confirmError = !isLogin && form.confirmPassword && form.password !== form.confirmPassword ? 'Passwords do not match.' : '';
-  async function submit(e) { e.preventDefault(); setError(''); const invalidEmail = emailErrorMessage(form.email); setEmailError(invalidEmail); if (invalidEmail || (!isLogin && (passwordError || confirmError))) return; setBusy(true); try { const data = await api(`/auth/${isLogin ? 'login' : 'register'}`, { method: 'POST', body: JSON.stringify(form) }); login(data); navigate(data.user.role === 'admin' ? '/admin' : '/shop'); } catch (e) { setError(isLogin ? 'Login failed. Email or password is incorrect.' : e.message); } finally { setBusy(false); } }
+  async function submit(e) { e.preventDefault(); setError(''); const invalidEmail = emailErrorMessage(form.email); setEmailError(invalidEmail); if (invalidEmail || (!isLogin && (passwordError || confirmError))) return; setBusy(true); try { const data = await api(`/auth/${isLogin ? 'login' : 'register'}`, { method: 'POST', body: JSON.stringify(form) }); login(data); toast.success(isLogin ? 'Signed in successfully.' : 'Account created. Welcome to Northstar!'); navigate(data.user.role === 'admin' ? '/admin' : '/shop'); } catch (e) { setError(isLogin ? 'Login failed. Email or password is incorrect.' : e.message); } finally { setBusy(false); } }
   return <main className="auth-shell"><div className="auth-art"><span className="eyebrow">WELCOME TO NORTHSTAR</span><h2>Find the good<br/>in the <em>everyday.</em></h2><p>A considered collection of things that make life feel a little more yours.</p><div className="auth-art-image"><img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80" alt="Store shelves"/></div></div><form className="auth-form" onSubmit={submit}><span className="eyebrow">{isLogin ? 'GOOD TO HAVE YOU BACK' : 'MAKE YOURSELF AT HOME'}</span><h1>{isLogin ? 'Welcome back.' : 'Create account.'}</h1><p className="muted">{isLogin ? 'Sign in to manage your bag and orders.' : 'Join us to save your orders and check out.'}</p><Notice message={error}/>{!isLogin && <><label>First name<input name="first_name" required minLength="2" value={form.first_name} onChange={change} placeholder="First name"/></label><label>Last name<input name="last_name" required minLength="2" value={form.last_name} onChange={change} placeholder="Last name"/></label></>}{!isLogin && <label>Phone number<input name="phone" type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength="11" required value={form.phone} onChange={change} placeholder="11-digit phone number"/></label>}{!isLogin && <label>Birthday  <input name="birthday" type="date" max={today} required value={form.birthday} onChange={change}/></label>}{!isLogin && <label>Default shipping address<textarea name="address" required minLength="8" rows="3" value={form.address} onChange={change} placeholder="House / unit, street, barangay, city, province"/></label>}    <label>Email address<input name="email" type="email" required pattern="[^@\s]+@[^@\s]+" title="Enter an email address containing @" value={form.email} onChange={change} onBlur={() => setEmailError(emailErrorMessage(form.email))} placeholder="you@example.com"/>{emailError && <small className="field-error">{emailError}</small>}{!emailError && error.toLowerCase().includes('email') && <small className="field-error">{error}</small>}</label><PasswordInput name="password" value={form.password} onChange={change} placeholder={isLogin ? 'Your password' : '8+ chars, uppercase, number, symbol'} error={passwordError}/>{!isLogin && <label className="password-label">Confirm password<div className="password-field"><input name="confirmPassword" type={showConfirm ? 'text' : 'password'} required value={form.confirmPassword} onChange={change} placeholder="Re-enter your password"/><button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)} aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'}>{showConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>{confirmError && <small className="field-error">{confirmError}</small>}</label>}{isLogin && <Link className="text-link auth-forgot" to="/forgot-password">Forgot password?</Link>}<button className="button button-dark wide-button" disabled={busy}>{busy ? 'Please wait…' : isLogin ? 'Sign in' : 'Create account'} <ArrowUpRight size={17}/></button><p className="auth-switch">{isLogin ? 'New to Northstar?' : 'Already have an account?'} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? 'Create an account' : 'Sign in'}</Link></p>{isLogin && <p className="demo-hint">Demo admin: admin@northstar.local · Admin123!</p>}</form></main>;
 }
 
@@ -363,12 +394,13 @@ function ForgotPassword() {
 }
 
 function ResetPassword() {
+  const toast = useToast();
   const token = new URLSearchParams(window.location.search).get('token') || '';
   const navigate = useNavigate();
   const [password, setPassword] = useState(''), [confirmPassword, setConfirmPassword] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false), [showConfirm, setShowConfirm] = useState(false);
   const passwordError = password && !/^(?=.{8,}$)(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/.test(password) ? 'Use 8+ characters with an uppercase letter, number, and symbol.' : '';
-  async function submit(e) { e.preventDefault(); if (passwordError || password !== confirmPassword) return setError(passwordError || 'Passwords do not match.'); setBusy(true); try { const data = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password, confirmPassword }) }); setMessage(data.message); setTimeout(() => navigate('/login'), 1200); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  async function submit(e) { e.preventDefault(); if (passwordError || password !== confirmPassword) return toast.error(passwordError || 'Passwords do not match.'); setBusy(true); try { const data = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password, confirmPassword }) }); setMessage(data.message); setTimeout(() => navigate('/login'), 1200); } catch (e) { setError(e.message); } finally { setBusy(false); } }
   return <main className="auth-shell"><form className="auth-form auth-form-centered" onSubmit={submit}><span className="eyebrow">ACCOUNT RECOVERY</span><h1>Reset password.</h1><Notice message={error}/><Notice message={message} type="success"/><label className="password-label">New password<div className="password-field"><input type={showPassword ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)} placeholder="8+ chars, uppercase, number, symbol"/><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>{passwordError && <small className="field-error">{passwordError}</small>}</label><label className="password-label">Confirm password<div className="password-field"><input type={showConfirm ? 'text' : 'password'} required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter your password"/><button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)}>{showConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></label><button className="button button-dark wide-button" disabled={busy || !token}>{busy ? 'Saving…' : 'Reset password'} <ArrowUpRight size={17}/></button></form></main>;
 }
 function Orders() {
@@ -380,30 +412,54 @@ function Orders() {
     if (location.state?.message) setNotice(location.state.message);
   }, [location.state]);
   if (!user) return <main className="page-shell"><div className="empty-state"><h3>Sign in to view your orders.</h3><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
-  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR NORTHSTAR ACCOUNT</span><h1>Order <em>history.</em></h1><p>Every order, all in one place.</p></div><Notice message={notice} type="success"/><Notice message={error}/>{!orders.length && !error ? <div className="empty-state"><ClipboardList size={30}/><h3>No orders yet.</h3><p>Your next everyday favorite is waiting.</p><Link to="/shop" className="button button-dark">Explore the shop</Link></div> : <div className="orders-list">{orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5,'0')}</span><h3>{new Date(o.created_at).toLocaleDateString()}</h3></div><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span></div><div className="order-products">{o.items.map((it,i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="order-card-total"><span>Total</span><strong>{money(o.total)}</strong></div><p className="muted order-address">Delivering to: {o.shipping_address}</p></article>)}</div>}</main>;
+  return <main className="page-shell"><div className="page-heading compact-heading"><span className="eyebrow">YOUR NORTHSTAR ACCOUNT</span><h1>Order <em>history.</em></h1><p>Every order, all in one place.</p></div><Notice message={notice} type="success"/><Notice message={error}/>{!orders.length && !error ? <div className="empty-state"><ClipboardList size={30}/><h3>No orders yet.</h3><p>Your next everyday favorite is waiting.</p><Link to="/shop" className="button button-dark">Explore the shop</Link></div> : <div className="orders-list">{orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5,'0')}</span><h3>{new Date(o.created_at).toLocaleDateString()}</h3></div><span className={`status status-${o.status.toLowerCase()}`}>{statusLabel(o.status)}</span></div><div className="order-products">{o.items.map((it,i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="order-card-total"><span>Total</span><strong>{money(o.total)}</strong></div><p className="muted order-address">Delivering to: {o.shipping_address}</p></article>)}</div>}</main>;
+}
+function AddCategory({ onAdded }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false), [name, setName] = useState(''), [busy, setBusy] = useState(false);
+  const close = () => { setOpen(false); setName(''); };
+  async function submit() {
+    const clean = name.trim().replace(/\s+/g, ' ');
+    if (clean.length < 2) { toast.error('Category name must be at least 2 characters.'); return; }
+    setBusy(true);
+    try {
+      const d = await api('/categories', { method: 'POST', body: JSON.stringify({ name: clean }) });
+      toast.success(`Category "${d.category.name}" added.`);
+      onAdded?.(d.category.name);
+      close();
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  }
+  if (!open) return <button type="button" className="button button-outline add-category-btn" onClick={() => setOpen(true)}><Plus size={15}/> Add category</button>;
+  return <div className="add-category"><input autoFocus value={name} maxLength={80} placeholder="New category name" aria-label="New category name" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') close(); }}/><button type="button" className="button button-dark" disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add'}</button><button type="button" className="button button-outline" onClick={close}>Cancel</button></div>;
 }
 function Admin() {
   const [products, setProducts] = useState([]), [orders, setOrders] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [tab, setTab] = useState('dashboard'), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [tab, setTab] = useState('dashboard'), toast = useToast();
+  const [orderFilter, setOrderFilter] = useState('All');
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] });
-  const categories = ['Accessories', 'Electronics', 'Home', 'Fashion', 'General'];
+  const [categoryList, setCategoryList] = useState(['Accessories', 'Electronics', 'Home', 'Fashion', 'General']);
+  const categoryAdded = (name, select) => {
+    setCategoryList(list => list.includes(name) ? list : [...list, name]);
+    if (select) setForm(f => ({ ...f, category: name }));
+  };
   const { user } = useStore();
-  async function refresh() { const [p, o, a] = await Promise.all([api('/products'), api('/orders'), api('/orders/admin/activity')]); setProducts(p.products); setOrders(o.orders); setActivity(a.activity); }
-  useEffect(() => { if (user?.role === 'admin') refresh().catch(e => setError(e.message)); }, [user]);
+  async function refresh() { const [p, o, a, c] = await Promise.all([api('/products'), api('/orders'), api('/orders/admin/activity'), api('/categories').catch(() => null)]); setProducts(p.products); setOrders(o.orders); setActivity(a.activity); if (c) setCategoryList(c.categories.map(x => x.name)); }
+  useEffect(() => { if (user?.role === 'admin') refresh().catch(e => toast.error(e.message)); }, [user]);
   const reset = () => { setEditing(null); setForm({ name: '', description: '', category: 'Accessories', image_url: '', imageFile: null, variants: [{ color: '', name: 'Standard', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] }); };
   const edit = (p) => { setEditing(p.id); setForm({ name: p.name, description: p.description, category: p.category, image_url: p.image_url || '', imageFile: null, variants: (p.variants || []).map(({ color, name, sku, price, stock, image_url }) => ({ color: color || '', name, sku, price: String(price), stock: String(stock), image_url: image_url || '', imageFile: null })) }); setTab('add-product'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  async function save(e) { e.preventDefault(); setError(''); setNotice(''); const body = new FormData(); body.append('name', form.name); body.append('description', form.description); body.append('category', form.category); body.append('image_url', form.imageFile ? '' : form.image_url); body.append('variants', JSON.stringify(form.variants.map(v => ({ color: v.color.trim(), name: v.name.trim(), sku: v.sku.trim(), price: Number(v.price), stock: Number(v.stock), image_url: v.image_url })))); form.variants.forEach((v, i) => { if (v.imageFile) body.append(`variant_image_${i}`, v.imageFile); }); if (form.imageFile) body.append('product_image', form.imageFile); try { await api(editing ? `/products/${editing}` : '/products', { method: editing ? 'PUT' : 'POST', body }); setNotice(editing ? 'Product updated.' : 'Product created.'); reset(); setTab('products'); await refresh(); } catch (e) { setError(e.message); } }
-  async function remove(id) { if (!window.confirm('Delete this product?')) return; try { await api(`/products/${id}`, { method: 'DELETE' }); setNotice('Product deleted.'); await refresh(); } catch (e) { setError(e.message); } }
-  async function updateStatus(id, status) { try { await api(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); setNotice(`Order #${id} updated.`); await refresh(); } catch (e) { setError(e.message); } }
+  async function save(e) { e.preventDefault(); const body = new FormData(); body.append('name', form.name); body.append('description', form.description); body.append('category', form.category); body.append('image_url', form.imageFile ? '' : form.image_url); body.append('variants', JSON.stringify(form.variants.map(v => ({ color: v.color.trim(), name: v.name.trim(), sku: v.sku.trim(), price: Number(v.price), stock: Number(v.stock), image_url: v.image_url })))); form.variants.forEach((v, i) => { if (v.imageFile) body.append(`variant_image_${i}`, v.imageFile); }); if (form.imageFile) body.append('product_image', form.imageFile); try { await api(editing ? `/products/${editing}` : '/products', { method: editing ? 'PUT' : 'POST', body }); toast.success(editing ? 'Product updated.' : 'Product created.'); reset(); setTab('products'); await refresh(); } catch (e) { toast.error(e.message); } }
+  async function remove(p) { const ok = await toast.confirm({ title: 'Delete product?', message: `Delete "${p.name}"? This can't be undone.`, confirmLabel: 'Delete', danger: true }); if (!ok) return; try { await api(`/products/${p.id}`, { method: 'DELETE' }); toast.success('Product deleted.'); await refresh(); } catch (e) { toast.error(e.message); } }
+  async function updateStatus(id, status) { try { await api(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); toast.success(`Order #${id} marked as ${statusLabel(status)}.`); await refresh(); } catch (e) { toast.error(e.message); } }
   const updateVariant = (index, key, value) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, [key]: value } : v) });
   if (user?.role !== 'admin') return <main className="page-shell"><div className="empty-state"><ShieldCheck size={32}/><h3>Administrator access only.</h3><p>Sign in with an administrator account to manage the store.</p><Link to="/login" className="button button-dark">Sign in</Link></div></main>;
-  const productForm = <form className="form-card admin-form" onSubmit={save}><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Variant fields and images are required.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: '', name: '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<input required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)} placeholder="e.g. Black"/></label><label>Name / size<input required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} placeholder="e.g. Medium"/></label><label>SKU<input required value={v.sku} onChange={e => updateVariant(i, 'sku', e.target.value)} placeholder="e.g. ITEM-BLK-M"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
-  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div><div><span>LOW STOCK</span><b>{products.filter(p => p.low_stock).length}</b></div></div><div className="admin-tabs"><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard size={16}/> Dashboard</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div><Notice message={error}/><Notice message={notice} type="success"/>{tab === 'dashboard' && <div className="admin-dashboard"><section className="admin-product-list"><h2>Low-stock products <span>{products.filter(p => p.low_stock).length} items</span></h2>{products.filter(p => p.low_stock).length ? products.filter(p => p.low_stock).map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.stock} remaining · threshold {p.low_stock_threshold}</small></div><strong className="status status-pending">Low stock</strong></div>) : <p className="muted">All products have healthy stock levels.</p>}</section><section className="admin-product-list"><h2>Recent activity <span>{activity.length} events</span></h2>{activity.length ? activity.slice(0, 10).map(item => <div className="activity-row" key={item.id}><div><b>{item.action}</b><small>{item.details} · {item.admin_name}</small></div><time>{new Date(item.created_at).toLocaleString()}</time></div>) : <p className="muted">No admin activity recorded yet.</p>}</section></div>}{tab === 'products' && <div className="admin-product-list"><h2>Product catalog <span>{products.length} items</span></h2>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button onClick={() => remove(p.id)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-add"><h2>{editing ? 'Edit product' : 'Add a product'}</h2>{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>All orders <span>{orders.length} orders</span></h2>{!orders.length ? <div className="empty-state"><p>No orders have been placed yet.</p></div> : orders.map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{o.status}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(s => <option key={s}>{s}</option>)}</select></label></div></article>)}</div>}</main>;
+  const productForm = <form className="form-card admin-form" onSubmit={save}><label>Product name<input required minLength="2" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label><label>Description<textarea rows="3" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}/></label><label>Main product image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!form.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, imageFile: file, image_url: file ? '' : form.image_url }); }}/>{form.image_url && !form.imageFile && <small className="muted">Current main image saved</small>}</label><label>Category<select required value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option value="" disabled>Select a category</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select></label><div className="category-add-row"><AddCategory onAdded={name => categoryAdded(name, true)}/></div><div className="variant-editor"><div className="variant-editor-heading"><div><h3>Variants</h3><small className="muted">Variant fields and images are required.</small></div><button type="button" className="button button-outline" onClick={() => setForm({ ...form, variants: [...form.variants, { color: '', name: '', sku: '', price: '', stock: '0', image_url: '', imageFile: null }] })}><Plus size={15}/> Add variant</button></div>{form.variants.map((v, i) => <div className="variant-row" key={i}><label>Color<input required value={v.color} onChange={e => updateVariant(i, 'color', e.target.value)} placeholder="e.g. Black"/></label><label>Name / size<input required value={v.name} onChange={e => updateVariant(i, 'name', e.target.value)} placeholder="e.g. Medium"/></label><label>SKU<input required value={v.sku} onChange={e => updateVariant(i, 'sku', e.target.value)} placeholder="e.g. ITEM-BLK-M"/></label><label>Price<input type="number" min="0" step="0.01" required value={v.price} onChange={e => updateVariant(i, 'price', e.target.value)}/></label><label>Stock<input type="number" min="0" step="1" required value={v.stock} onChange={e => updateVariant(i, 'stock', e.target.value)}/></label><label>Variant image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required={!v.image_url} onChange={e => { const file = e.target.files?.[0] || null; setForm({ ...form, variants: form.variants.map((item, j) => j === i ? { ...item, imageFile: file, image_url: file ? '' : item.image_url } : item) }); }}/>{v.image_url && !v.imageFile && <small className="muted">Current image saved</small>}</label>{form.variants.length > 1 && <button type="button" className="remove-button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}><Trash2 size={15}/> Remove</button>}</div>)}</div><button className="button button-dark wide-button">{editing ? 'Save changes' : 'Add product'} <ArrowUpRight size={17}/></button>{editing && <button type="button" className="button button-outline wide-button" onClick={() => { reset(); setTab('products'); }}>Cancel edit</button>}</form>;
+  return <main className="page-shell admin-shell"><div className="page-heading compact-heading"><span className="eyebrow">STORE CONTROL</span><h1>Admin <em>studio.</em></h1><p>Manage your catalog and keep orders moving.</p></div><div className="admin-stats"><div><span>PRODUCTS</span><b>{products.length}</b></div><div><span>ORDERS</span><b>{orders.length}</b></div><div><span>COMPLETED ORDERS</span><b>{orders.filter(o => o.status === 'Delivered').length}</b></div><div><span>REVENUE ON RECORDED ORDERS</span><b>{money(orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + Number(o.total), 0))}</b></div><div><span>LOW STOCK</span><b>{products.filter(p => p.low_stock).length}</b></div></div><div className="admin-tabs"><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard size={16}/> Dashboard</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><ShoppingBag size={16}/> Products</button><button className={tab === 'add-product' ? 'active' : ''} onClick={() => { reset(); setTab('add-product'); }}><Plus size={16}/> Add product</button><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList size={16}/> Orders</button></div>{tab === 'dashboard' && <div className="admin-dashboard"><section className="admin-product-list"><h2>Low-stock products <span>{products.filter(p => p.low_stock).length} items</span></h2>{products.filter(p => p.low_stock).length ? products.filter(p => p.low_stock).map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.stock} remaining · threshold {p.low_stock_threshold}</small></div><strong className="status status-pending">Low stock</strong></div>) : <p className="muted">All products have healthy stock levels.</p>}</section><section className="admin-product-list"><h2>Recent activity <span>{activity.length} events</span></h2>{activity.length ? activity.slice(0, 10).map(item => <div className="activity-row" key={item.id}><div><b>{item.action}</b><small>{item.details} · {item.admin_name}</small></div><time>{new Date(item.created_at).toLocaleString()}</time></div>) : <p className="muted">No admin activity recorded yet.</p>}</section></div>}{tab === 'products' && <div className="admin-product-list"><div className="admin-list-head"><h2>Product catalog <span>{products.length} items</span></h2><AddCategory onAdded={name => categoryAdded(name, false)}/></div>{products.map(p => <div className="admin-product" key={p.id}><img src={imageSrc(p.image_url)} alt={p.name}/><div><b>{p.name}</b><small>{p.category} · {p.variants?.length || 1} variants · {p.stock} in stock {p.low_stock && <strong className="status status-pending">Low stock</strong>}</small><strong>{money(p.price)}</strong></div><div className="admin-row-actions"><button className="row-edit" title="Edit product" onClick={() => edit(p)} aria-label={`Edit ${p.name}`}><Pencil size={16}/></button><button className="row-delete" title="Delete product" onClick={() => remove(p)} aria-label={`Delete ${p.name}`}><Trash2 size={16}/></button></div></div>)}</div>  }{tab === 'add-product' && <div className="admin-add"><h2>{editing ? 'Edit product' : 'Add a product'}</h2>{productForm}</div>}{tab === 'orders' && <div className="admin-orders"><h2>{orderFilter === 'All' ? 'All orders' : `${statusLabel(orderFilter)} orders`} <span>{orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length} orders</span></h2><div className="category-pills order-filters">{['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(f => <button key={f} className={orderFilter === f ? 'pill active' : 'pill'} onClick={() => setOrderFilter(f)}>{statusLabel(f)} ({f === 'All' ? orders.length : orders.filter(o => o.status === f).length})</button>)}</div>{!orders.filter(o => orderFilter === 'All' || o.status === orderFilter).length ? <div className="empty-state"><p>{orderFilter === 'All' ? 'No orders have been placed yet.' : `No ${statusLabel(orderFilter).toLowerCase()} orders yet.`}</p></div> : orders.filter(o => orderFilter === 'All' || o.status === orderFilter).map(o => <article className="order-card" key={o.id}><div className="order-card-head"><div><span className="eyebrow">ORDER #{String(o.id).padStart(5, '0')}</span><h3>{o.customer_name}</h3><p className="muted">{o.email} · {new Date(o.created_at).toLocaleString()}</p></div><strong>{money(o.total)}</strong></div><p className="order-address">{o.shipping_address} · {o.phone}</p><div className="order-products">{o.items.map((it, i) => <div key={i}><span>{it.product_name} × {it.quantity}</span><b>{money(it.line_total)}</b></div>)}</div><div className="admin-status-row"><span className={`status status-${o.status.toLowerCase()}`}>{statusLabel(o.status)}</span><label>Update status <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}>{['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map(st => <option key={st} value={st}>{statusLabel(st)}</option>)}</select></label></div></article>)}</div>}</main>;
 }
 function Profile() {
   const { user, updateUser } = useStore();
+  const toast = useToast();
   const [form, setForm] = useState({
     first_name: user?.first_name || '',
     last_name: user?.last_name || '',
@@ -416,8 +472,6 @@ function Profile() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [picture, setPicture] = useState(null);
   const [preview, setPreview] = useState(user?.profile_picture || '');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [addresses, setAddresses] = useState([]);
   const [addressForm, setAddressForm] = useState({
@@ -439,7 +493,7 @@ function Profile() {
     });
     setPreview(user?.profile_picture || '');
     if (user?.role !== 'admin') {
-      api('/auth/addresses').then((data) => setAddresses(data.addresses)).catch((err) => setError(err.message));
+      api('/auth/addresses').then((data) => setAddresses(data.addresses)).catch((err) => toast.error(err.message));
     } else {
       setAddresses([]);
     }
@@ -458,8 +512,6 @@ function Profile() {
 
   async function saveAddress(e) {
     e.preventDefault();
-    setError('');
-    setNotice('');
     setBusy(true);
     try {
       const data = await api(
@@ -472,24 +524,25 @@ function Profile() {
         setAddresses([...addresses, data.address]);
       }
       resetAddressForm();
-      setNotice(editingAddress ? 'Address updated.' : 'Address added.');
+      toast.success(editingAddress ? 'Address updated.' : 'Address added.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function deleteAddress(id) {
-    if (!window.confirm('Delete this saved address?')) return;
+    const ok = await toast.confirm({ title: 'Delete address?', message: 'Delete this saved address?', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
     try {
       await api(`/auth/addresses/${id}`, { method: 'DELETE' });
       const data = await api('/auth/addresses');
       setAddresses(data.addresses);
       if (editingAddress === id) resetAddressForm();
-      setNotice('Address deleted.');
+      toast.success('Address deleted.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -498,16 +551,14 @@ function Profile() {
       await api(`/auth/addresses/${id}/default`, { method: 'PATCH' });
       const data = await api('/auth/addresses');
       setAddresses(data.addresses);
-      setNotice('Default address updated.');
+      toast.success('Default address updated.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     }
   }
 
   async function saveProfile(e) {
     e.preventDefault();
-    setError('');
-    setNotice('');
     setBusy(true);
 
     try {
@@ -516,9 +567,9 @@ function Profile() {
         body: JSON.stringify(form)
       });
       updateUser(data.user);
-      setNotice('Your profile has been updated.');
+      toast.success('Your profile has been updated.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setBusy(false);
     }
@@ -526,11 +577,13 @@ function Profile() {
 
   async function changePassword(e) {
     e.preventDefault();
-    setError('');
-    setNotice('');
 
-    if (newPassword.length < 8) {
-      setError('Your new password must contain at least 8 characters.');
+    if (!/^(?=.{8,}$)(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/.test(newPassword)) {
+      toast.error('Use 8+ characters with an uppercase letter, a number, and a symbol.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New password and confirmation do not match.');
       return;
     }
 
@@ -543,9 +596,9 @@ function Profile() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setNotice(data.message || 'Your password has been changed.');
+      toast.success(data.message || 'Your password has been changed.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setBusy(false);
     }
@@ -554,12 +607,9 @@ function Profile() {
   async function uploadPicture(e) {
     e.preventDefault();
     if (!picture) {
-      setError('Please choose an image first.');
+      toast.error('Please choose an image first.');
       return;
     }
-
-    setError('');
-    setNotice('');
     setBusy(true);
 
     try {
@@ -573,9 +623,9 @@ function Profile() {
       updateUser(data.user);
       setPreview(data.user.profile_picture || '');
       setPicture(null);
-      setNotice('Your profile picture has been updated.');
+      toast.success('Your profile picture has been updated.');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setBusy(false);
     }
@@ -606,9 +656,6 @@ function Profile() {
         <h1>My <em>profile.</em></h1>
         <p>Manage your details and keep your account up to date.</p>
       </div>
-
-      <Notice message={error} />
-      <Notice message={notice} type="success" />
 
       <div className="profile-layout">
         {user.role !== 'admin' && <section className="form-card profile-addresses">
@@ -776,6 +823,7 @@ function Profile() {
                 minLength="8"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="8+ chars, uppercase, number, symbol"
               />
             </label>
 

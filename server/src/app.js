@@ -8,6 +8,7 @@ import { pool } from './db/pool.js';
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
+import categoryRoutes from './routes/categories.js';
 
 dotenv.config();
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('tinuga')) {
@@ -32,6 +33,7 @@ app.get('/api/health', async (_req, res) => {
 });
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use((req, res) => res.status(404).json({ message: 'API route not found.' }));
 app.use((err, _req, res, _next) => {
   console.error(err);

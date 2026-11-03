@@ -202,3 +202,20 @@ ON orders(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_orders_created_at
 ON orders(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name_lower
+ON categories (LOWER(name));
+
+INSERT INTO categories (name)
+SELECT name FROM (
+  SELECT UNNEST(ARRAY['Accessories', 'Electronics', 'Home', 'Fashion', 'General']) AS name
+  UNION
+  SELECT DISTINCT category FROM products WHERE category <> ''
+) c
+ON CONFLICT DO NOTHING;

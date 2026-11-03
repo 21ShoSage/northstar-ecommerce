@@ -42,10 +42,16 @@ function resetTransport() {
 }
 
 async function sendResetEmail(email, token) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
-    throw new Error('SMTP_HOST and SMTP_FROM must be configured for password reset emails.');
-  }
   const resetUrl = `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/reset-password?token=${encodeURIComponent(token)}`;
+
+  // No SMTP settings (typical for local/demo use): print the link in the server
+  // terminal instead of failing, so the reset flow can still be tested.
+  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
+    console.warn('\n[Password reset] SMTP is not configured, so no email was sent.');
+    console.warn(`[Password reset] Reset link for ${email}:\n${resetUrl}\n`);
+    return;
+  }
+
   await resetTransport().sendMail({
     from: process.env.SMTP_FROM,
     to: email,
@@ -450,9 +456,15 @@ router.put('/password', authenticate, async (req, res, next) => {
 
     }
 
+    if (await bcrypt.compare(newPassword, rows[0].password_hash)) {
+      return res.status(400).json({
+        message: 'Choose a new password that is different from your current one.'
+      });
+    }
+
     const hash = await bcrypt.hash(newPassword, 12);
     await pool.query(
-      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
       [hash, req.user.id]
     );
 
@@ -487,7 +499,14 @@ router.post('/forgot-password', async (req, res, next) => {
        VALUES ($1, $2, NOW() + INTERVAL '1 hour')`,
       [rows[0].id, tokenHash]
     );
-    await sendResetEmail(rows[0].email, token);
+    try {
+      await sendResetEmail(rows[0].email, token);
+    } catch (mailError) {
+      console.error('Password reset email failed:', mailError.message);
+      return res.status(503).json({
+        message: 'We could not send the reset email right now. Please try again later.'
+      });
+    }
     res.status(202).json({ message: generic });
   } catch (error) {
     next(error);

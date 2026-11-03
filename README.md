@@ -168,3 +168,9 @@ northstar-ecommerce/
 - **CORS error:** set `CLIENT_ORIGIN` to the exact frontend origin (default `http://localhost:5173`).
 - **Login fails:** run `npm run db:setup` and use the demo admin credentials above.
 - **`git` is not recognized:** install Git for Windows, reopen VS Code, and verify with `git --version`.
+
+## Password reset without SMTP
+If SMTP settings are empty, the server prints the reset link in the server terminal instead of emailing it (useful for local testing).
+
+## Categories
+Admins can add categories from the Products tab. The `categories` table is created automatically on first use (`npm run db:setup` also creates it).

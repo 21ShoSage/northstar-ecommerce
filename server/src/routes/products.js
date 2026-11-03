@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { rememberCategory } from './categories.js';
 
 const router = Router();
 
@@ -209,6 +210,7 @@ router.post(
         [p.name, p.description, p.category, p.image_url]
       );
       await syncVariants(rows[0].id, p, req.files);
+      await rememberCategory(p.category);
       await pool.query(
         `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
          VALUES ($1, 'Product created', 'product', $2, $3)`,
@@ -258,6 +260,7 @@ router.put(
       }
 
       await syncVariants(rows[0].id, p, req.files);
+      await rememberCategory(p.category);
       await pool.query(
         `INSERT INTO admin_activity_log (admin_id, action, entity_type, entity_id, details)
          VALUES ($1, 'Product updated', 'product', $2, $3)`,
